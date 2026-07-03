@@ -1,0 +1,4 @@
+# AeroScan custom packages
+source "$BR2_EXTERNAL_AEROSCAN_PATH/package/aeroscan-gui/Config.in"
+source "$BR2_EXTERNAL_AEROSCAN_PATH/package/rpi4-wifi-firmware/Config.in"
+# Phase 10 — droneaware Python scripts will be sourced here

@@ -1,0 +1,2 @@
+DEVICES="/dev/ttyACM0"
+GPSD_OPTIONS=""

@@ -1,0 +1,18 @@
+# Buildroot tree (fetched by `make download-buildroot`) and build output
+/buildroot/
+/output/
+
+# Map tiles — downloaded during the build (see tools/fetch-aviation-tiles.py);
+# never committed
+/maps-cache/
+/maps/
+
+# OpenAIP API key — get your own free key at https://www.openaip.net
+.openaip-key
+
+# Local tool state
+.claude/settings.local.json
+
+# Python bytecode
+__pycache__/
+*.pyc

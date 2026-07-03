@@ -1,0 +1,19 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Scope & telemetry signals" subtitle="Radar sweep green, cursor, oscilloscope trace" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  html,body{margin:0;background:#0c0c0c;font-family:var(--font-body)}
+  .wrap{padding:20px;display:flex;gap:14px;flex-wrap:wrap}
+  .sw{flex:1 1 0;min-width:96px;border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--shadow-panel)}
+  .chip{height:60px}
+  .meta{padding:8px 10px;background:rgba(255,255,255,0.03)}
+  .name{font-family:var(--font-title);font-size:11px;letter-spacing:var(--tracking-label);color:var(--text-muted);text-transform:uppercase}
+  .hex{font-size:11px;color:var(--text-muted);opacity:.7;margin-top:3px;font-family:var(--font-body)}
+</style></head>
+<body><div class="wrap">
+  <div class="sw"><div class="chip" style="background:var(--radar-green)"></div><div class="meta"><div class="name">Radar Green</div><div class="hex">#39ff14</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--radar-green-soft)"></div><div class="meta"><div class="name">Green Soft</div><div class="hex">#8bf688</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--radar-cursor)"></div><div class="meta"><div class="name">Cursor</div><div class="hex">#dcdcdc</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--oscope-yellow)"></div><div class="meta"><div class="name">OScope Yellow</div><div class="hex">#ffff00</div></div></div>
+</div></body></html>

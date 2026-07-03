@@ -1,0 +1,21 @@
+<!-- @dsCard group="Brand" viewport="700x200" name="Iconography" subtitle="40px monochrome PNG glyphs, recolored at runtime via mask" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  html,body{margin:0;background:#0c0c0c;font-family:var(--font-body)}
+  .wrap{padding:24px;display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:9px;width:64px}
+  .ic{width:34px;height:34px;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
+  .lab{font-size:9px;color:var(--text-muted);text-align:center;letter-spacing:.02em}
+</style></head>
+<body><div class="wrap">
+  <div class="cell"><div class="ic" style="background:var(--radar-green);-webkit-mask-image:url(../assets/icons/adsb/on.png);mask-image:url(../assets/icons/adsb/on.png);filter:drop-shadow(0 0 4px var(--radar-green))"></div><span class="lab">ADS-B on</span></div>
+  <div class="cell"><div class="ic" style="background:var(--status-ok);-webkit-mask-image:url(../assets/icons/location/okay.png);mask-image:url(../assets/icons/location/okay.png);filter:drop-shadow(0 0 4px var(--status-ok))"></div><span class="lab">GPS lock</span></div>
+  <div class="cell"><div class="ic" style="background:var(--status-alert);-webkit-mask-image:url(../assets/icons/location/nolock.png);mask-image:url(../assets/icons/location/nolock.png)"></div><span class="lab">No lock</span></div>
+  <div class="cell"><div class="ic" style="background:var(--text-muted);-webkit-mask-image:url(../assets/icons/wifi/conn_4bar.png);mask-image:url(../assets/icons/wifi/conn_4bar.png)"></div><span class="lab">WiFi 4</span></div>
+  <div class="cell"><div class="ic" style="background:var(--text-muted);-webkit-mask-image:url(../assets/icons/wifi/connecting.png);mask-image:url(../assets/icons/wifi/connecting.png)"></div><span class="lab">Connecting</span></div>
+  <div class="cell"><div class="ic" style="background:var(--text-muted);-webkit-mask-image:url(../assets/icons/batt/dsg_full.png);mask-image:url(../assets/icons/batt/dsg_full.png)"></div><span class="lab">Battery</span></div>
+  <div class="cell"><div class="ic" style="background:var(--status-ok);-webkit-mask-image:url(../assets/icons/batt/chg_full.png);mask-image:url(../assets/icons/batt/chg_full.png)"></div><span class="lab">Charging</span></div>
+  <div class="cell"><div class="ic" style="background:var(--text-amber);-webkit-mask-image:url(../assets/icons/settings/wifi_psk_4bar.png);mask-image:url(../assets/icons/settings/wifi_psk_4bar.png)"></div><span class="lab">Secured</span></div>
+</div></body></html>

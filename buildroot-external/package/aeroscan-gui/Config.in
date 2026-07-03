@@ -1,0 +1,5 @@
+config BR2_PACKAGE_AEROSCAN_GUI
+	bool "aeroscan-gui"
+	depends on BR2_PACKAGE_QT5
+	help
+	  AeroScan Qt5 GUI application.

@@ -1,0 +1,38 @@
+/* AeroScan — Webfonts
+   Three families pulled straight from the device firmware (theme.cpp):
+   - Lato        → standardFont  (body, data tables, readouts)
+   - Neuropol X  → titleFont     (screen titles, labels, UI chrome)
+   - Sofachrome  → fancyFont     (hero wordmark / brand lockups)
+*/
+
+@font-face {
+  font-family: "Lato";
+  src: url("../assets/fonts/Lato-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lato";
+  src: url("../assets/fonts/Lato-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Neuropol X";
+  src: url("../assets/fonts/neuropol-x-rg.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sofachrome";
+  src: url("../assets/fonts/sofachrome-rg.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

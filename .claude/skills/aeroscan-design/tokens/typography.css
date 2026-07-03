@@ -1,0 +1,41 @@
+/* AeroScan — Typography
+   The device is a tiny 480×480 instrument; type runs small and dense. Three families:
+   - Neuropol X : techno display face. Screen titles, section labels, the chrome. Often
+                  set in mixed/upper case, tracked slightly open. This IS the AeroScan voice.
+   - Sofachrome : chrome/aero display face. Reserved for the big wordmark and hero lockups.
+   - Lato       : neutral humanist sans. Everything readable — body, tables, telemetry,
+                  preset lists, settings values. Regular + Bold only.
+   Point sizes below mirror the firmware (titles 22–26pt, body 14pt, table cells 9pt).
+*/
+
+:root {
+  /* Families */
+  --font-title: "Neuropol X", "Eurostile", "Bank Gothic", sans-serif;
+  --font-fancy: "Sofachrome", "Neuropol X", sans-serif;
+  --font-body: "Lato", "Helvetica Neue", Arial, sans-serif;
+
+  /* Weights */
+  --weight-regular: 400;
+  --weight-bold: 700;
+
+  /* Type scale — device-native (px). The panel is 480px wide, so these are literal. */
+  --size-hero: 40px;     /* Sofachrome wordmark on splash / credits */
+  --size-title: 26px;    /* dialog & primary screen titles (Neuropol X) */
+  --size-title-sm: 22px; /* sub-screen titles e.g. "Flight List" */
+  --size-label: 16px;    /* menu items, button labels (selected = teal) */
+  --size-body: 14px;     /* dialog body, settings values */
+  --size-data: 12px;     /* footer totals, status readouts */
+  --size-cell: 11px;     /* table cells (firmware uses 9pt ≈ 11–12px on screen) */
+  --size-micro: 9px;     /* dense annotations, ring labels */
+
+  /* Line heights */
+  --leading-tight: 1.05;
+  --leading-snug: 1.25;
+  --leading-body: 1.45;
+
+  /* Tracking — Neuropol X reads best with a touch of openness; never tight. */
+  --tracking-title: 0.02em;
+  --tracking-label: 0.04em;
+  --tracking-caps: 0.12em;   /* all-caps chrome labels */
+  --tracking-body: 0;
+}

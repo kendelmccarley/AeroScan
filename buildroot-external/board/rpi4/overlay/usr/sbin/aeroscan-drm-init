@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+"""
+Work around silent vc4_hdmi_encoder_atomic_enable PHY failure at boot.
+
+Root cause: at boot the vc4 fbdev helper calls SETCRTC with mode 480x800@60,
+which triggers vc5_hdmi_phy_init.  The PLL lock fails silently (display stays
+black) because the firmware HDMI clock domain hasn't fully handed off to Linux
+yet.  A second modeset attempted seconds later (with a different mode so
+mode_changed=true) succeeds — the key is that the DRM atomic framework's
+implicit disable+enable has zero user-space sleep gap, unlike an explicit
+disable→sleep→enable sequence which lets the PHY clock domain decay further.
+
+Fix: switch CRTC to the connector's preferred mode (480x800@62) with a fresh
+dumb framebuffer.  DRM sees mode_changed=true, runs atomic disable+enable with
+no sleep between them, PHY PLL locks.  Script then exits; drm_lastclose fires,
+fbdev helper restores its mode (480x800@60), fbcon shows the login prompt.
+
+Log: /var/log/aeroscan-drm-init.log (fsync after every line)
+"""
+
+import ctypes, fcntl, mmap, os, subprocess, sys, time
+
+LOG = '/var/log/aeroscan-drm-init.log'
+_logfd = None
+
+def log(msg):
+    global _logfd
+    print(msg, file=sys.stderr, flush=True)
+    if _logfd is not None:
+        try:
+            os.write(_logfd, (msg + '\n').encode())
+            os.fsync(_logfd)
+        except Exception:
+            pass
+
+
+class ModeInfo(ctypes.Structure):
+    _fields_ = [
+        ('clock',       ctypes.c_uint32),
+        ('hdisplay',    ctypes.c_uint16), ('hsync_start', ctypes.c_uint16),
+        ('hsync_end',   ctypes.c_uint16), ('htotal',      ctypes.c_uint16),
+        ('hskew',       ctypes.c_uint16),
+        ('vdisplay',    ctypes.c_uint16), ('vsync_start', ctypes.c_uint16),
+        ('vsync_end',   ctypes.c_uint16), ('vtotal',      ctypes.c_uint16),
+        ('vscan',       ctypes.c_uint16),
+        ('vrefresh',    ctypes.c_uint32),
+        ('flags',       ctypes.c_uint32),
+        ('type',        ctypes.c_uint32),
+        ('name',        ctypes.c_char * 32),
+    ]
+
+class ModeCrtc(ctypes.Structure):
+    _fields_ = [
+        ('set_connectors_ptr', ctypes.c_uint64),
+        ('count_connectors',   ctypes.c_uint32),
+        ('crtc_id',            ctypes.c_uint32),
+        ('fb_id',              ctypes.c_uint32),
+        ('x',                  ctypes.c_uint32),
+        ('y',                  ctypes.c_uint32),
+        ('gamma_size',         ctypes.c_uint32),
+        ('mode_valid',         ctypes.c_uint32),
+        ('mode',               ModeInfo),
+    ]
+
+class ModeRes(ctypes.Structure):
+    _fields_ = [
+        ('fb_id_ptr',        ctypes.c_uint64),
+        ('crtc_id_ptr',      ctypes.c_uint64),
+        ('connector_id_ptr', ctypes.c_uint64),
+        ('encoder_id_ptr',   ctypes.c_uint64),
+        ('count_fbs',        ctypes.c_uint32),
+        ('count_crtcs',      ctypes.c_uint32),
+        ('count_connectors', ctypes.c_uint32),
+        ('count_encoders',   ctypes.c_uint32),
+        ('min_width',        ctypes.c_uint32), ('max_width',  ctypes.c_uint32),
+        ('min_height',       ctypes.c_uint32), ('max_height', ctypes.c_uint32),
+    ]
+
+class ModeGetConnector(ctypes.Structure):
+    _fields_ = [
+        ('encoders_ptr',      ctypes.c_uint64),
+        ('modes_ptr',         ctypes.c_uint64),
+        ('props_ptr',         ctypes.c_uint64),
+        ('prop_values_ptr',   ctypes.c_uint64),
+        ('count_modes',       ctypes.c_uint32),
+        ('count_props',       ctypes.c_uint32),
+        ('count_encoders',    ctypes.c_uint32),
+        ('encoder_id',        ctypes.c_uint32),
+        ('connector_id',      ctypes.c_uint32),
+        ('connector_type',    ctypes.c_uint32),
+        ('connector_type_id', ctypes.c_uint32),
+        ('connection',        ctypes.c_uint32),
+        ('mm_width',          ctypes.c_uint32),
+        ('mm_height',         ctypes.c_uint32),
+        ('subpixel',          ctypes.c_uint32),
+        ('pad',               ctypes.c_uint32),
+    ]
+
+class ModeGetEncoder(ctypes.Structure):
+    _fields_ = [
+        ('encoder_id',      ctypes.c_uint32),
+        ('encoder_type',    ctypes.c_uint32),
+        ('crtc_id',         ctypes.c_uint32),
+        ('possible_crtcs',  ctypes.c_uint32),
+        ('possible_clones', ctypes.c_uint32),
+    ]
+
+class ModeCreateDumb(ctypes.Structure):
+    _fields_ = [
+        ('height', ctypes.c_uint32), ('width',  ctypes.c_uint32),
+        ('bpp',    ctypes.c_uint32), ('flags',  ctypes.c_uint32),
+        ('handle', ctypes.c_uint32), ('pitch',  ctypes.c_uint32),
+        ('size',   ctypes.c_uint64),
+    ]
+
+class ModeMapDumb(ctypes.Structure):
+    _fields_ = [
+        ('handle', ctypes.c_uint32),
+        ('pad',    ctypes.c_uint32),
+        ('offset', ctypes.c_uint64),
+    ]
+
+class ModeFbCmd(ctypes.Structure):
+    _fields_ = [
+        ('fb_id',  ctypes.c_uint32),
+        ('width',  ctypes.c_uint32), ('height', ctypes.c_uint32),
+        ('pitch',  ctypes.c_uint32), ('bpp',    ctypes.c_uint32),
+        ('depth',  ctypes.c_uint32), ('handle', ctypes.c_uint32),
+    ]
+
+
+def _ioctl_nr(dir_, type_char, nr, size):
+    return (dir_ << 30) | (size << 16) | (ord(type_char) << 8) | nr
+
+DRM_SET_MASTER       = _ioctl_nr(0, 'd', 0x1e, 0)
+DRM_DROP_MASTER      = _ioctl_nr(0, 'd', 0x1f, 0)
+DRM_GETRESOURCES     = _ioctl_nr(3, 'd', 0xA0, ctypes.sizeof(ModeRes))
+DRM_GETCRTC          = _ioctl_nr(3, 'd', 0xA1, ctypes.sizeof(ModeCrtc))
+DRM_SETCRTC          = _ioctl_nr(3, 'd', 0xA2, ctypes.sizeof(ModeCrtc))
+DRM_GETCONNECTOR     = _ioctl_nr(3, 'd', 0xA7, ctypes.sizeof(ModeGetConnector))
+DRM_GETENCODER       = _ioctl_nr(3, 'd', 0xA6, ctypes.sizeof(ModeGetEncoder))
+DRM_MODE_CREATE_DUMB = _ioctl_nr(3, 'd', 0xB2, ctypes.sizeof(ModeCreateDumb))
+DRM_MODE_MAP_DUMB    = _ioctl_nr(3, 'd', 0xB3, ctypes.sizeof(ModeMapDumb))
+DRM_MODE_ADDFB       = _ioctl_nr(3, 'd', 0xAE, ctypes.sizeof(ModeFbCmd))
+
+DRM_MODE_CONNECTED = 1
+
+
+def do_ioctl(fd, nr, st):
+    fcntl.ioctl(fd, nr, st, True)
+
+def do_ioctl_noarg(fd, nr):
+    fcntl.ioctl(fd, nr)
+
+
+def try_card(card):
+    log(f'--- trying {card} ---')
+    try:
+        fd = os.open(card, os.O_RDWR)
+    except Exception as e:
+        log(f'  open failed: {type(e).__name__}: {e}')
+        return False
+
+    try:
+        do_ioctl_noarg(fd, DRM_SET_MASTER)
+        log('  SET_MASTER ok')
+    except Exception as e:
+        log(f'  SET_MASTER failed: {type(e).__name__}: {e}')
+
+    try:
+        res = ModeRes()
+        do_ioctl(fd, DRM_GETRESOURCES, res)
+        n_crtcs = res.count_crtcs
+        n_conns = res.count_connectors
+        log(f'  GETRESOURCES ok: crtcs={n_crtcs} connectors={n_conns}')
+    except Exception as e:
+        log(f'  GETRESOURCES failed: {type(e).__name__}: {e}')
+        os.close(fd)
+        return False
+
+    if n_crtcs == 0 or n_conns == 0:
+        log('  no CRTCs or connectors — wrong card')
+        try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+        except Exception: pass
+        os.close(fd)
+        return False
+
+    crtc_ids_buf = (ctypes.c_uint32 * n_crtcs)()
+    conn_ids_buf = (ctypes.c_uint32 * n_conns)()
+    try:
+        res2 = ModeRes()
+        res2.count_crtcs      = n_crtcs
+        res2.count_connectors = n_conns
+        res2.crtc_id_ptr      = ctypes.addressof(crtc_ids_buf)
+        res2.connector_id_ptr = ctypes.addressof(conn_ids_buf)
+        do_ioctl(fd, DRM_GETRESOURCES, res2)
+        log(f'  crtc ids: {list(crtc_ids_buf)}')
+        log(f'  conn ids: {list(conn_ids_buf)}')
+    except Exception as e:
+        log(f'  GETRESOURCES(2) failed: {type(e).__name__}: {e}')
+        os.close(fd)
+        return False
+
+    target_crtc_id = 0
+    target_conn_id = 0
+    best_mode = None
+
+    for conn_id in conn_ids_buf:
+        try:
+            conn = ModeGetConnector()
+            conn.connector_id = conn_id
+            do_ioctl(fd, DRM_GETCONNECTOR, conn)
+        except Exception as e:
+            log(f'  GETCONNECTOR({conn_id}) failed: {type(e).__name__}: {e}')
+            continue
+
+        CONN_STATUS = {1: 'connected', 2: 'disconnected', 3: 'unknown'}
+        log(f'  conn {conn_id}: status={CONN_STATUS.get(conn.connection, conn.connection)} '
+            f'modes={conn.count_modes} encoder_id={conn.encoder_id}')
+
+        if conn.connection != DRM_MODE_CONNECTED:
+            continue
+        if conn.count_modes == 0:
+            continue
+
+        try:
+            modes_buf = (ModeInfo * conn.count_modes)()
+            conn2 = ModeGetConnector()
+            conn2.connector_id = conn_id
+            conn2.count_modes  = conn.count_modes
+            conn2.modes_ptr    = ctypes.addressof(modes_buf)
+            do_ioctl(fd, DRM_GETCONNECTOR, conn2)
+            best_mode = modes_buf[0]
+            log(f'    preferred mode: {best_mode.hdisplay}x{best_mode.vdisplay}@{best_mode.vrefresh} '
+                f'clock={best_mode.clock}kHz name={best_mode.name}')
+        except Exception as e:
+            log(f'    mode read failed: {type(e).__name__}: {e}')
+
+        if conn.encoder_id:
+            try:
+                enc = ModeGetEncoder()
+                enc.encoder_id = conn.encoder_id
+                do_ioctl(fd, DRM_GETENCODER, enc)
+                log(f'    encoder {conn.encoder_id}: crtc_id={enc.crtc_id}')
+                if enc.crtc_id:
+                    target_conn_id = conn_id
+                    target_crtc_id = enc.crtc_id
+            except Exception as e:
+                log(f'    GETENCODER failed: {type(e).__name__}: {e}')
+        else:
+            target_crtc_id = crtc_ids_buf[0]
+            target_conn_id = conn_id
+            log(f'    no encoder assigned; using first crtc {target_crtc_id}')
+        break
+
+    if target_crtc_id == 0:
+        log('  no usable CRTC found')
+        try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+        except Exception: pass
+        os.close(fd)
+        return False
+
+    if best_mode is None:
+        log('  no preferred mode from connector; aborting')
+        try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+        except Exception: pass
+        os.close(fd)
+        return False
+
+    try:
+        cur = ModeCrtc()
+        cur.crtc_id = target_crtc_id
+        do_ioctl(fd, DRM_GETCRTC, cur)
+        log(f'  CRTC {target_crtc_id}: mode_valid={cur.mode_valid} fb_id={cur.fb_id} '
+            f'mode={cur.mode.hdisplay}x{cur.mode.vdisplay}@{cur.mode.vrefresh} '
+            f'clock={cur.mode.clock}kHz')
+    except Exception as e:
+        log(f'  GETCRTC failed: {type(e).__name__}: {e}')
+        try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+        except Exception: pass
+        os.close(fd)
+        return False
+
+    # Create a fresh dumb buffer.  Using a new FB (not the fbdev helper's
+    # fb_id) ensures no FB ownership conflict and guarantees the plane state
+    # changes, keeping mode_changed as the sole driver of the modeset.
+    w, h = best_mode.hdisplay, best_mode.vdisplay
+    try:
+        dumb = ModeCreateDumb()
+        dumb.width = w; dumb.height = h; dumb.bpp = 32
+        do_ioctl(fd, DRM_MODE_CREATE_DUMB, dumb)
+        log(f'  dumb buf: handle={dumb.handle} pitch={dumb.pitch} size={dumb.size}')
+    except Exception as e:
+        log(f'  CREATE_DUMB failed: {type(e).__name__}: {e}')
+        try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+        except Exception: pass
+        os.close(fd)
+        return False
+
+    try:
+        map_st = ModeMapDumb()
+        map_st.handle = dumb.handle
+        do_ioctl(fd, DRM_MODE_MAP_DUMB, map_st)
+        buf_size = int(dumb.size)
+        with mmap.mmap(fd, buf_size, offset=int(map_st.offset)) as mm:
+            mm[:] = b'\xff' * buf_size
+        log(f'  dumb buf filled white ({buf_size} bytes)')
+    except Exception as e:
+        log(f'  mmap/fill failed: {type(e).__name__}: {e}')
+
+    try:
+        fb = ModeFbCmd()
+        fb.width = w; fb.height = h
+        fb.pitch = dumb.pitch; fb.bpp = 32; fb.depth = 24
+        fb.handle = dumb.handle
+        do_ioctl(fd, DRM_MODE_ADDFB, fb)
+        log(f'  ADDFB ok: fb_id={fb.fb_id}')
+    except Exception as e:
+        log(f'  ADDFB failed: {type(e).__name__}: {e}')
+        try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+        except Exception: pass
+        os.close(fd)
+        return False
+
+    # SETCRTC with the connector's preferred mode and fresh fb.
+    # If the CRTC is active at a different mode, DRM detects mode_changed=true
+    # and runs atomic disable+enable with no user-space sleep gap — this is
+    # what allows the HDMI PHY PLL to lock successfully.
+    try:
+        conn_arr = (ctypes.c_uint32 * 1)(target_conn_id)
+        enable = ModeCrtc()
+        enable.crtc_id            = target_crtc_id
+        enable.fb_id              = fb.fb_id
+        enable.count_connectors   = 1
+        enable.set_connectors_ptr = ctypes.addressof(conn_arr)
+        enable.mode_valid         = 1
+        enable.mode               = best_mode
+        do_ioctl(fd, DRM_SETCRTC, enable)
+        log('  SETCRTC ok')
+    except Exception as e:
+        log(f'  SETCRTC failed: {type(e).__name__}: {e}')
+
+    try: do_ioctl_noarg(fd, DRM_DROP_MASTER)
+    except Exception: pass
+
+    # Capture dmesg for post-mortem reference.
+    try:
+        r = subprocess.run(['/bin/dmesg'], capture_output=True, text=True, timeout=10)
+        with open('/var/log/dmesg-boot.log', 'w') as f:
+            f.write(r.stdout)
+        log(f'  dmesg saved: {len(r.stdout)} bytes')
+    except Exception as e:
+        log(f'  dmesg capture failed: {type(e).__name__}: {e}')
+
+    # Close fd immediately — drm_lastclose fires, fbdev helper restores its
+    # mode (480x800@60), and fbcon shows the login prompt.
+    os.close(fd)
+    return True
+
+
+def main():
+    global _logfd
+    try:
+        _logfd = os.open(LOG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    except Exception:
+        pass
+
+    log('aeroscan-drm-init starting')
+
+    try:
+        dri_entries = os.listdir('/dev/dri')
+        log(f'/dev/dri contents: {sorted(dri_entries)}')
+    except Exception as e:
+        log(f'/dev/dri not accessible: {e}')
+
+    for card in ('/dev/dri/card1', '/dev/dri/card0'):
+        if not os.path.exists(card):
+            log(f'{card} does not exist')
+            continue
+        try:
+            if try_card(card):
+                log('SUCCESS')
+                os.sync()
+                if _logfd is not None:
+                    os.close(_logfd)
+                return 0
+        except Exception as e:
+            log(f'try_card({card}) raised {type(e).__name__}: {e}')
+
+    log('all cards failed')
+    os.sync()
+    if _logfd is not None:
+        os.close(_logfd)
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

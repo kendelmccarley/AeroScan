@@ -1,0 +1,16 @@
+[Unit]
+Description=WPA supplicant for AeroScan onboard WiFi
+After=sysinit.target local-fs.target
+Wants=network.target
+Before=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c 'until ip link show wlan0 >/dev/null 2>&1; do sleep 1; done'
+ExecStart=/usr/sbin/wpa_supplicant -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf -i wlan0
+ExecStartPost=/bin/sh -c 'sleep 2; iw dev wlan0 set power_save off || true'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

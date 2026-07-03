@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AeroScan — Map Scope Mock (Monochrome Aviation)</title>
+<style>
+  @font-face { font-family:"Neuropol X"; src:url(".claude/skills/aeroscan-design/assets/fonts/neuropol-x-rg.ttf"); }
+  @font-face { font-family:"Lato"; src:url(".claude/skills/aeroscan-design/assets/fonts/Lato-Regular.ttf"); font-weight:400; }
+  @font-face { font-family:"Lato"; src:url(".claude/skills/aeroscan-design/assets/fonts/Lato-Bold.ttf"); font-weight:700; }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#000; display:flex; flex-direction:column; align-items:center;
+         justify-content:flex-start; min-height:100vh; padding:32px 16px 48px; }
+
+  /* ── Device shell ── */
+  .device {
+    position:relative;
+    width:800px; height:480px;
+    background:#0d0d0d;
+    border:2px solid #222;
+    border-radius:10px;
+    overflow:hidden;
+    box-shadow:0 0 40px rgba(0,0,0,0.8);
+    flex-shrink:0;
+  }
+
+  /* ── Left column ── */
+  .col-left {
+    position:absolute; left:0; top:0; width:160px; height:480px;
+    background:#0a0a0a;
+    border-right:1px solid #1a1a1a;
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:space-between; padding:20px 0 16px;
+  }
+  .brand-mark {
+    width:54px; height:54px;
+    background:url(".claude/skills/aeroscan-design/assets/brand/parhelia-mark.png") center/contain no-repeat;
+  }
+  .wordmark {
+    font-family:"Neuropol X",monospace; font-size:11px; color:#ffac11;
+    letter-spacing:0.14em; text-align:center;
+    text-shadow:0 0 10px rgba(255,172,17,0.5);
+  }
+  .quad {
+    display:flex; flex-direction:column; gap:8px; align-items:center;
+  }
+  .qbtn {
+    width:110px; height:28px;
+    border:1px solid #2a2a2a; background:#111;
+    font-family:"Neuropol X",monospace; font-size:10px; color:#666;
+    display:flex; align-items:center; justify-content:center;
+    letter-spacing:0.06em; cursor:default;
+  }
+  .qhint { font-family:"Lato",sans-serif; font-size:9px; color:#333; letter-spacing:0.04em; }
+
+  /* ── Map canvas area ── */
+  .map-area {
+    position:absolute; left:160px; top:0; width:480px; height:480px;
+    overflow:hidden;
+  }
+  #mapCanvas { display:block; }
+
+  /* ── Right column ── */
+  .col-right {
+    position:absolute; right:0; top:0; width:160px; height:480px;
+    background:#0a0a0a;
+    border-left:1px solid #1a1a1a;
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:18px; padding:20px 12px;
+  }
+  .status-row {
+    display:flex; align-items:center; gap:8px;
+    font-family:"Lato",sans-serif; font-size:11px; color:#555;
+  }
+  .status-icon {
+    width:18px; height:18px; flex-shrink:0;
+    background:center/contain no-repeat;
+  }
+  .status-ok { color:#22cc44; }
+  .status-time {
+    font-family:"Neuropol X",monospace; font-size:14px;
+    color:#ffac11; text-shadow:0 0 8px rgba(255,172,17,0.4);
+    letter-spacing:0.06em;
+  }
+  .status-zoom {
+    font-family:"Neuropol X",monospace; font-size:11px;
+    color:#666; letter-spacing:0.08em;
+  }
+  .divider-h { width:80px; height:1px; background:#1a1a1a; }
+
+  /* ── Caption ── */
+  .caption {
+    margin-top:20px;
+    font-family:"Lato",sans-serif; font-size:13px; color:#555;
+    text-align:center; max-width:760px; line-height:1.6;
+  }
+  .caption strong { color:#888; }
+  .note {
+    margin-top:10px;
+    font-family:"Lato",sans-serif; font-size:11px; color:#3a3a3a;
+    text-align:center; max-width:760px; line-height:1.5;
+  }
+
+  /* ── Style switcher ── */
+  .controls {
+    display:flex; gap:12px; margin-bottom:20px; margin-top:8px; flex-wrap:wrap;
+    justify-content:center;
+  }
+  .ctl-btn {
+    font-family:"Neuropol X",monospace; font-size:10px; letter-spacing:0.08em;
+    border:1px solid #333; background:#111; color:#666;
+    padding:6px 16px; cursor:pointer; transition:all 0.1s;
+  }
+  .ctl-btn:hover { border-color:#ffac11; color:#ffac11; }
+  .ctl-btn.active { border-color:#ffac11; color:#ffac11; background:rgba(255,172,17,0.08);
+    box-shadow:0 0 8px rgba(255,172,17,0.2); }
+  .ctl-label {
+    font-family:"Lato",sans-serif; font-size:11px; color:#333;
+    align-self:center;
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="ctl-label">Map layer:</span>
+  <button class="ctl-btn active" onclick="setStyle('dark')">Mono Dark</button>
+  <button class="ctl-btn" onclick="setStyle('grey')">Mono Grey</button>
+  <button class="ctl-btn" onclick="setStyle('amber')">Amber Scope</button>
+  <span class="ctl-label" style="margin-left:16px">Overlays:</span>
+  <button class="ctl-btn active" id="btn-airspace" onclick="toggleLayer('airspace',this)">Airspace</button>
+  <button class="ctl-btn active" id="btn-navaid" onclick="toggleLayer('navaid',this)">NAVAIDs</button>
+  <button class="ctl-btn active" id="btn-aircraft" onclick="toggleLayer('aircraft',this)">Traffic</button>
+</div>
+
+<!-- AeroScan device -->
+<div class="device">
+
+  <!-- Left column -->
+  <div class="col-left">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div class="brand-mark"></div>
+      <div class="wordmark">AEROSCAN</div>
+    </div>
+    <div class="quad">
+      <div class="qbtn">▲ Up</div>
+      <div class="qbtn">● Sel</div>
+      <div class="qbtn">▼ Dn</div>
+      <div class="qbtn">◄ Back</div>
+    </div>
+    <div class="qhint">touch quadrants</div>
+  </div>
+
+  <!-- Map -->
+  <div class="map-area">
+    <canvas id="mapCanvas" width="480" height="480"></canvas>
+  </div>
+
+  <!-- Right column -->
+  <div class="col-right">
+    <div class="status-time" id="clock">--:--</div>
+    <div class="divider-h"></div>
+    <div class="status-row status-ok">
+      <div class="status-icon" style="background-image:url('.claude/skills/aeroscan-design/assets/icons/location/okay.png')"></div>
+      GPS Lock
+    </div>
+    <div class="status-row">
+      <div class="status-icon" style="background-image:url('.claude/skills/aeroscan-design/assets/icons/adsb/on.png');filter:opacity(0.5)"></div>
+      ADS-B On
+    </div>
+    <div class="status-row">
+      <div class="status-icon" style="background-image:url('.claude/skills/aeroscan-design/assets/icons/wifi/conn_4bar.png');filter:opacity(0.5)"></div>
+      WiFi
+    </div>
+    <div class="status-row">
+      <div class="status-icon" style="background-image:url('.claude/skills/aeroscan-design/assets/icons/batt/dsg_full.png');filter:opacity(0.5)"></div>
+      Batt
+    </div>
+    <div class="divider-h"></div>
+    <div class="status-zoom" id="zoom-label">Zoom: 9</div>
+    <div style="font-family:'Lato',sans-serif;font-size:9px;color:#333;text-align:center;margin-top:4px">
+      ▲▼ zoom<br>● cursor<br>◄ back
+    </div>
+  </div>
+</div>
+
+<p class="caption">
+  <strong>Monochrome OpenAviationMap-style tiles</strong> — aviation data only, no terrain.
+  Airspace class rings (B/C/D/E), VOR compass roses, NDB markers, named fixes, Victor airways, airports.
+  Aircraft dots tinted by carrier (same as Radar Scope).
+</p>
+<p class="note">
+  This is a canvas-rendered mock at approx zoom 9, centered ~KPHX area.
+  Real tiles would come from OpenAviationMap or a custom TileServerGL render of OurAirports + OpenAIP data.
+</p>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let mapStyle = 'dark';
+let layers = { airspace: true, navaid: true, aircraft: true };
+
+// ── Style palettes ───────────────────────────────────────────────────────────
+const STYLES = {
+  dark: {
+    bg:        '#080a08',
+    water:     '#060806',
+    land:      '#0d0f0d',
+    border:    '#1a1e1a',
+    grid:      'rgba(255,255,255,0.04)',
+    text:      'rgba(255,255,255,0.55)',
+    label:     'rgba(255,255,255,0.75)',
+    apt:       '#cccccc',
+    vor:       '#aaaaaa',
+    ndb:       '#888888',
+    fix:       '#777777',
+    airway:    'rgba(255,255,255,0.18)',
+    classB:    'rgba(255,255,255,0.70)',
+    classC:    'rgba(255,255,255,0.45)',
+    classD:    'rgba(255,255,255,0.30)',
+    classE:    'rgba(255,255,255,0.15)',
+    restricted:'rgba(255,255,255,0.20)',
+    sweep:     null,
+  },
+  grey: {
+    bg:        '#1a1c1a',
+    water:     '#141614',
+    land:      '#222422',
+    border:    '#2e302e',
+    grid:      'rgba(255,255,255,0.05)',
+    text:      'rgba(220,220,220,0.55)',
+    label:     'rgba(220,220,220,0.80)',
+    apt:       '#dddddd',
+    vor:       '#bbbbbb',
+    ndb:       '#999999',
+    fix:       '#888888',
+    airway:    'rgba(255,255,255,0.20)',
+    classB:    'rgba(255,255,255,0.80)',
+    classC:    'rgba(255,255,255,0.55)',
+    classD:    'rgba(255,255,255,0.38)',
+    classE:    'rgba(255,255,255,0.18)',
+    restricted:'rgba(255,255,255,0.25)',
+    sweep:     null,
+  },
+  amber: {
+    bg:        '#060806',
+    water:     '#040604',
+    land:      '#0a0c08',
+    border:    '#181a10',
+    grid:      'rgba(255,172,17,0.05)',
+    text:      'rgba(255,172,17,0.45)',
+    label:     'rgba(255,172,17,0.80)',
+    apt:       '#ffac11',
+    vor:       '#cc8808',
+    ndb:       '#a06a00',
+    fix:       '#886000',
+    airway:    'rgba(255,172,17,0.18)',
+    classB:    'rgba(255,172,17,0.75)',
+    classC:    'rgba(255,172,17,0.50)',
+    classD:    'rgba(255,172,17,0.32)',
+    classE:    'rgba(255,172,17,0.14)',
+    restricted:'rgba(255,172,17,0.22)',
+    sweep:     null,
+  },
+};
+
+// ── Aviation data (approximate — Phoenix basin as reference geometry) ─────────
+// Everything is in pixel coords for a 480×480 canvas at zoom~9
+
+const AIRPORTS = [
+  { x:240, y:252, id:'KPHX', name:'Phoenix Sky Harbor', type:'large', hdg:25 },
+  { x:118, y:160, id:'KGEU', name:'Glendale Muni',      type:'small', hdg:0  },
+  { x:354, y:190, id:'KSDL', name:'Scottsdale',         type:'medium',hdg:3  },
+  { x:88,  y:340, id:'KLUF', name:'Luke AFB',            type:'military',hdg:3},
+  { x:400, y:380, id:'KCHD', name:'Chandler Muni',       type:'small', hdg:18 },
+  { x:172, y:400, id:'KGYR', name:'Phoenix Goodyear',    type:'medium',hdg:3  },
+  { x:310, y:82,  id:'KDVT', name:'Phoenix Deer Valley', type:'medium',hdg:0  },
+  { x:440, y:260, id:'KFFZ', name:'Falcon Field',        type:'small', hdg:8  },
+];
+
+const VORS = [
+  { x:240, y:252, id:'PXR', freq:'115.6', name:'Phoenix' },
+  { x:354, y:190, id:'SDL', freq:'117.1', name:'Scottsdale' },
+  { x:88,  y:340, id:'GEU', freq:'114.4', name:'Glendale' },
+  { x:380, y:420, id:'TFD', freq:'113.2', name:'Falcon' },
+];
+
+const NDBS = [
+  { x:160, y:220, id:'APA', freq:'375' },
+  { x:310, y:310, id:'EED', freq:'269' },
+  { x:420, y:130, id:'IRC', freq:'338' },
+];
+
+const FIXES = [
+  { x:190, y:140, id:'KACEE' },
+  { x:295, y:175, id:'MAIER' },
+  { x:420, y:300, id:'BRUSR' },
+  { x:155, y:310, id:'JOMTY' },
+  { x:340, y:440, id:'TUSSY' },
+  { x:70,  y:200, id:'SANND' },
+  { x:460, y:200, id:'DBACK' },
+  { x:240, y:50,  id:'BOLEN' },
+];
+
+// Airways: pairs of VOR indices
+const AIRWAYS = [
+  { pts:[{x:88,y:340},{x:240,y:252}], id:'V16' },
+  { pts:[{x:240,y:252},{x:354,y:190}], id:'V105' },
+  { pts:[{x:354,y:190},{x:380,y:420}], id:'V23' },
+  { pts:[{x:240,y:252},{x:380,y:420}], id:'V94' },
+  { pts:[{x:88,y:340},{x:70,y:200}], id:'' },
+  { pts:[{x:240,y:252},{x:240,y:50}], id:'V66' },
+];
+
+// Airspace: center, inner radius, outer radius (or just one ring), class
+const AIRSPACE = [
+  // Class B — Phoenix Sky Harbor (3 rings)
+  { cx:240, cy:252, r:98,  cls:'B', dash:null,   lbl:'B  10000' },
+  { cx:240, cy:252, r:62,  cls:'B', dash:null,   lbl:'B  8000'  },
+  { cx:240, cy:252, r:30,  cls:'B', dash:null,   lbl:'B  SFC'   },
+  // Class C — Scottsdale
+  { cx:354, cy:190, r:50,  cls:'C', dash:null,   lbl:'C  4100' },
+  { cx:354, cy:190, r:25,  cls:'C', dash:null,   lbl:'C  SFC'  },
+  // Class D — Deer Valley
+  { cx:310, cy:82,  r:22,  cls:'D', dash:[4,4],  lbl:'D  4300' },
+  // Class D — Goodyear
+  { cx:172, cy:400, r:20,  cls:'D', dash:[4,4],  lbl:'D  4100' },
+  // Class D — Chandler
+  { cx:400, cy:380, r:18,  cls:'D', dash:[4,4],  lbl:'D  3000' },
+  // Class D — Luke AFB
+  { cx:88,  cy:340, r:24,  cls:'D', dash:[4,4],  lbl:'D  SFC'  },
+  // Class D — Falcon Field
+  { cx:440, cy:260, r:18,  cls:'D', dash:[4,4],  lbl:''        },
+  // MOA — rough polygon (drawn as arc sector)
+  { cx:60,  cy:100, r:70,  cls:'R', dash:[2,5],  lbl:'R-2303'  },
+];
+
+// ADS-B traffic
+const AIRCRAFT = [
+  { x:200, y:200, cs:'SWA241', hdg:250, color:'#ffa500' },
+  { x:310, y:150, cs:'DAL1180',hdg:95,  color:'#3a7bff' },
+  { x:160, y:310, cs:'AAL55',  hdg:20,  color:'#ff3b3b' },
+  { x:390, y:280, cs:'UAL902', hdg:320, color:'#3a7bff' },
+  { x:280, y:370, cs:'N172SP', hdg:75,  color:'#aaaaaa' },
+  { x:130, y:130, cs:'FDX19',  hdg:180, color:'#a219ff' },
+];
+
+// ── Drawing helpers ─────────────────────────────────────────────────────────
+const cv = document.getElementById('mapCanvas');
+const ctx = cv.getContext('2d');
+
+function drawVOR(s, v) {
+  const r = 12, spokes = 36;
+  ctx.save();
+  ctx.translate(v.x, v.y);
+
+  // outer ring
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.strokeStyle = s.vor; ctx.lineWidth = 0.8; ctx.stroke();
+
+  // inner dot
+  ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2);
+  ctx.fillStyle = s.vor; ctx.fill();
+
+  // compass petals — 36 tick marks
+  for (let i=0; i<spokes; i++) {
+    const a = (i/spokes)*Math.PI*2;
+    const inner = i%9===0 ? r*0.5 : i%3===0 ? r*0.7 : r*0.88;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*inner, Math.sin(a)*inner);
+    ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+    ctx.strokeStyle = s.vor;
+    ctx.lineWidth = i%9===0 ? 1.2 : 0.6;
+    ctx.stroke();
+  }
+
+  // hex outer ring
+  ctx.beginPath();
+  for (let i=0;i<6;i++){
+    const a=(i/6)*Math.PI*2 - Math.PI/6;
+    if(i===0) ctx.moveTo(Math.cos(a)*(r+5),Math.sin(a)*(r+5));
+    else ctx.lineTo(Math.cos(a)*(r+5),Math.sin(a)*(r+5));
+  }
+  ctx.closePath();
+  ctx.strokeStyle=s.vor; ctx.lineWidth=0.7; ctx.stroke();
+
+  // label
+  ctx.font = 'bold 7px Lato, sans-serif';
+  ctx.fillStyle = s.label;
+  ctx.textAlign = 'center';
+  ctx.fillText(v.id, 0, r+15);
+  ctx.font = '6px Lato, sans-serif';
+  ctx.fillStyle = s.text;
+  ctx.fillText(v.freq, 0, r+22);
+
+  ctx.restore();
+}
+
+function drawNDB(s, n) {
+  ctx.save();
+  ctx.translate(n.x, n.y);
+
+  // concentric dashed circles
+  for (let ri = 1; ri <= 3; ri++) {
+    ctx.beginPath(); ctx.arc(0,0,ri*4,0,Math.PI*2);
+    ctx.setLineDash([2,3]);
+    ctx.strokeStyle = s.ndb; ctx.lineWidth = 0.7; ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(0,0,2,0,Math.PI*2);
+  ctx.fillStyle = s.ndb; ctx.fill();
+
+  ctx.font = 'bold 7px Lato, sans-serif';
+  ctx.fillStyle = s.label;
+  ctx.textAlign = 'center';
+  ctx.fillText(n.id, 0, 20);
+  ctx.font = '6px Lato, sans-serif';
+  ctx.fillStyle = s.text;
+  ctx.fillText(n.freq, 0, 27);
+
+  ctx.restore();
+}
+
+function drawFix(s, f) {
+  const sz = 5;
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.beginPath();
+  ctx.moveTo(0, -sz);
+  ctx.lineTo(sz*0.866, sz*0.5);
+  ctx.lineTo(-sz*0.866, sz*0.5);
+  ctx.closePath();
+  ctx.strokeStyle = s.fix; ctx.lineWidth = 0.8; ctx.stroke();
+
+  ctx.font = '6px Lato, sans-serif';
+  ctx.fillStyle = s.text;
+  ctx.textAlign = 'left';
+  ctx.fillText(f.id, sz+2, 3);
+  ctx.restore();
+}
+
+function drawAirport(s, a) {
+  ctx.save();
+  ctx.translate(a.x, a.y);
+
+  const r = a.type==='large' ? 9 : a.type==='medium' ? 6.5 : 5;
+  const lw = a.type==='large' ? 1.5 : 1;
+
+  // outer circle
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.strokeStyle = s.apt; ctx.lineWidth = lw; ctx.stroke();
+
+  // runway line (primary direction)
+  if (a.type !== 'military') {
+    const ang = (a.hdg-90)*Math.PI/180;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang)*r*1.1, Math.sin(ang)*r*1.1);
+    ctx.lineTo(-Math.cos(ang)*r*1.1, -Math.sin(ang)*r*1.1);
+    ctx.strokeStyle = s.apt; ctx.lineWidth = lw*1.2; ctx.stroke();
+  } else {
+    // military star
+    ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2);
+    ctx.fillStyle = s.apt; ctx.fill();
+  }
+
+  // inner fill for large
+  if (a.type==='large') {
+    ctx.beginPath(); ctx.arc(0,0,3,0,Math.PI*2);
+    ctx.fillStyle = s.apt; ctx.fill();
+  }
+
+  // label
+  ctx.font = `bold ${a.type==='large'?8:7}px Lato, sans-serif`;
+  ctx.fillStyle = s.label;
+  ctx.textAlign = 'center';
+  ctx.fillText(a.id, 0, r+11);
+
+  ctx.restore();
+}
+
+function drawAirspace(s, a) {
+  let color;
+  switch(a.cls) {
+    case 'B': color=s.classB; break;
+    case 'C': color=s.classC; break;
+    case 'D': color=s.classD; break;
+    default:  color=s.restricted; break;
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(a.cx, a.cy, a.r, 0, Math.PI*2);
+  if (a.dash) ctx.setLineDash(a.dash);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = a.cls==='B' ? 1.8 : a.cls==='C' ? 1.3 : 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // small class label near top of ring
+  if (a.lbl) {
+    ctx.font = '6px Lato, sans-serif';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.fillText(a.lbl, a.cx, a.cy - a.r - 3);
+  }
+  ctx.restore();
+}
+
+function drawAircraft(ac) {
+  ctx.save();
+  ctx.translate(ac.x, ac.y);
+  ctx.rotate((ac.hdg) * Math.PI / 180);
+
+  // chevron
+  ctx.beginPath();
+  ctx.moveTo(0,-7); ctx.lineTo(5,6); ctx.lineTo(0,3); ctx.lineTo(-5,6);
+  ctx.closePath();
+  ctx.fillStyle = ac.color;
+  ctx.shadowColor = ac.color; ctx.shadowBlur = 8;
+  ctx.fill();
+  ctx.restore();
+
+  // callsign
+  ctx.save();
+  ctx.font = '7px Lato, sans-serif';
+  ctx.fillStyle = ac.color;
+  ctx.globalAlpha = 0.8;
+  ctx.fillText(ac.cs, ac.x+8, ac.y-6);
+  ctx.restore();
+}
+
+// ── Main draw ────────────────────────────────────────────────────────────────
+function draw() {
+  const s = STYLES[mapStyle];
+  ctx.clearRect(0,0,480,480);
+
+  // background land
+  ctx.fillStyle = s.bg;
+  ctx.fillRect(0,0,480,480);
+
+  // subtle water bodies (Salt River area)
+  ctx.fillStyle = s.water;
+  ctx.fillRect(0,0,480,480); // same, just a base
+
+  // faint lat/lon grid
+  ctx.strokeStyle = s.grid;
+  ctx.lineWidth = 0.5;
+  for (let i=0; i<6; i++){
+    ctx.beginPath(); ctx.moveTo(i*96,0); ctx.lineTo(i*96,480); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,i*96); ctx.lineTo(480,i*96); ctx.stroke();
+  }
+
+  // a few terrain boundary lines (mountain ranges, Salt River)
+  ctx.strokeStyle = s.border;
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([]);
+  // Superstition Mts (east)
+  ctx.beginPath(); ctx.moveTo(380,300); ctx.quadraticCurveTo(440,340,460,420); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(420,180); ctx.quadraticCurveTo(460,240,460,300); ctx.stroke();
+  // White Tank Mts (west)
+  ctx.beginPath(); ctx.moveTo(30,200); ctx.quadraticCurveTo(60,280,40,400); ctx.stroke();
+  // Salt River channel
+  ctx.strokeStyle = s.border;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0,240); ctx.bezierCurveTo(80,245,160,238,240,252); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(240,252); ctx.bezierCurveTo(320,266,370,260,480,255); ctx.stroke();
+
+  // Victor airways
+  if (layers.navaid) {
+    ctx.strokeStyle = s.airway; ctx.lineWidth = 0.6;
+    ctx.setLineDash([6,4]);
+    AIRWAYS.forEach(aw => {
+      ctx.beginPath();
+      ctx.moveTo(aw.pts[0].x, aw.pts[0].y);
+      for(let i=1;i<aw.pts.length;i++) ctx.lineTo(aw.pts[i].x, aw.pts[i].y);
+      ctx.stroke();
+      // airway ID midpoint
+      if (aw.id) {
+        const mx = (aw.pts[0].x+aw.pts[aw.pts.length-1].x)/2;
+        const my = (aw.pts[0].y+aw.pts[aw.pts.length-1].y)/2;
+        ctx.setLineDash([]);
+        ctx.font = '6px Lato, sans-serif';
+        ctx.fillStyle = s.text;
+        ctx.textAlign = 'center';
+        ctx.fillText(aw.id, mx+8, my-4);
+        ctx.setLineDash([6,4]);
+      }
+    });
+    ctx.setLineDash([]);
+  }
+
+  // Airspace
+  if (layers.airspace) {
+    AIRSPACE.forEach(a => drawAirspace(s, a));
+  }
+
+  // NAVAIDs
+  if (layers.navaid) {
+    NDBS.forEach(n => drawNDB(s, n));
+    FIXES.forEach(f => drawFix(s, f));
+    VORS.forEach(v => drawVOR(s, v));
+  }
+
+  // Airports — always shown
+  AIRPORTS.forEach(a => drawAirport(s, a));
+
+  // Aircraft
+  if (layers.aircraft) {
+    AIRCRAFT.forEach(a => drawAircraft(a));
+  }
+
+  // Zoom level readout (as seen in mapscope.cpp)
+  ctx.font = '11px Lato, sans-serif';
+  ctx.fillStyle = '#cc3333';
+  ctx.textAlign = 'left';
+  ctx.fillText('Zoom Level: 9', 8, 470);
+
+  // Screen title
+  ctx.font = '14px "Neuropol X", monospace';
+  ctx.fillStyle = '#ffac11';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(255,172,17,0.6)'; ctx.shadowBlur = 12;
+  ctx.fillText('Map Scope', 240, 20);
+  ctx.shadowBlur = 0;
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+function setStyle(name) {
+  mapStyle = name;
+  document.querySelectorAll('.ctl-btn').forEach(b => {
+    if(b.textContent.toLowerCase().replace(' ','') === name.replace(' ','') ||
+       (name==='dark'&&b.textContent==='Mono Dark') ||
+       (name==='grey'&&b.textContent==='Mono Grey') ||
+       (name==='amber'&&b.textContent==='Amber Scope')) {
+      b.classList.add('active');
+    }
+  });
+  draw();
+}
+function toggleLayer(name, btn) {
+  layers[name] = !layers[name];
+  btn.classList.toggle('active', layers[name]);
+  draw();
+}
+
+// ── Clock ────────────────────────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+}
+tick(); setInterval(tick, 1000);
+
+// ── Style button wiring ──────────────────────────────────────────────────────
+document.querySelectorAll('.ctl-btn').forEach(b => {
+  b.addEventListener('click', function() {
+    const txt = this.textContent;
+    if (['Mono Dark','Mono Grey','Amber Scope'].includes(txt)) {
+      document.querySelectorAll('.ctl-btn').forEach(x => {
+        if(['Mono Dark','Mono Grey','Amber Scope'].includes(x.textContent))
+          x.classList.remove('active');
+      });
+      this.classList.add('active');
+    }
+  });
+});
+
+draw();
+</script>
+</body>
+</html>

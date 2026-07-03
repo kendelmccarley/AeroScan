@@ -1,0 +1,21 @@
+<!-- @dsCard group="Spacing" viewport="700x160" name="Radius & elevation" subtitle="Hard instrument corners; glow, not soft shadow" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  html,body{margin:0;background:#0c0c0c;font-family:var(--font-body)}
+  .wrap{padding:22px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .box{width:74px;height:60px;background:var(--surface);display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}
+  .lab{font-size:10px;color:var(--text-muted)}
+  .g{width:74px;height:60px;border-radius:var(--radius-md)}
+</style></head>
+<body><div class="wrap">
+  <div style="text-align:center"><div class="box" style="border-radius:var(--radius-none)"><span class="lab">0</span></div><div class="lab" style="margin-top:6px">none</div></div>
+  <div style="text-align:center"><div class="box" style="border-radius:var(--radius-sm)"><span class="lab">3</span></div><div class="lab" style="margin-top:6px">sm</div></div>
+  <div style="text-align:center"><div class="box" style="border-radius:var(--radius-md)"><span class="lab">6</span></div><div class="lab" style="margin-top:6px">md</div></div>
+  <div style="text-align:center"><div class="box" style="border-radius:var(--radius-pill)"><span class="lab">pill</span></div><div class="lab" style="margin-top:6px">pill</div></div>
+  <div style="width:1px;height:60px;background:rgba(255,255,255,.1)"></div>
+  <div style="text-align:center"><div class="g" style="background:var(--surface);box-shadow:var(--glow-amber)"></div><div class="lab" style="margin-top:6px">glow-amber</div></div>
+  <div style="text-align:center"><div class="g" style="background:var(--surface);box-shadow:var(--glow-green)"></div><div class="lab" style="margin-top:6px">glow-green</div></div>
+  <div style="text-align:center"><div class="g" style="background:var(--surface);box-shadow:var(--glow-cyan)"></div><div class="lab" style="margin-top:6px">glow-cyan</div></div>
+</div></body></html>

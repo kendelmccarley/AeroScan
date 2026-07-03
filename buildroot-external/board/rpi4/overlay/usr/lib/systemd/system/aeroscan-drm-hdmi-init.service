@@ -1,0 +1,11 @@
+[Unit]
+Description=Initialize HDMI0 display (re-trigger vc4 encoder enable)
+After=basic.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'until [ -c /dev/dri/card1 ]; do sleep 1; done; /usr/sbin/aeroscan-drm-init'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

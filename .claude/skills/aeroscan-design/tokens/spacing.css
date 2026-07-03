@@ -1,0 +1,56 @@
+/* AeroScan — Spacing, radius, shadow, motion
+   The instrument is a fixed 800×480 surface: a centered 480×480 round-cornered content
+   area flanked by two 160px touch/status columns. Geometry is literal-pixel, not fluid.
+   Corners are mostly hard (this is an instrument, not a consumer app) — only the device
+   bezel and a few capsules round off. Glow, not drop-shadow, is the depth language.
+*/
+
+:root {
+  /* ---- Spacing scale (4px base) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- Device geometry (firmware constants) ---- */
+  --device-w: 800px;       /* full framebuffer */
+  --device-h: 480px;
+  --content: 480px;        /* centered round content area */
+  --side-col: 160px;       /* left/right touch + status columns */
+  --scope-center: 240px;   /* circular screens center at (240,240) */
+  --scope-radius: 240px;
+
+  /* ---- Radius ---- */
+  --radius-none: 0px;
+  --radius-sm: 3px;        /* tags, small chips */
+  --radius-md: 6px;        /* panels, inputs */
+  --radius-pill: 999px;    /* status capsules, toggles */
+  --radius-bezel: 28px;    /* outer device bezel */
+  --radius-screen: 18px;   /* inner screen glass corners */
+
+  /* ---- Borders ---- */
+  --border-1: 1px;
+  --border-2: 2px;         /* scope rings, selected outlines */
+  --border-hair: rgba(255, 255, 255, 0.14);
+
+  /* ---- Elevation: glow + bezel, never soft grey shadow ---- */
+  --glow-amber: 0 0 8px rgba(255, 172, 17, 0.45);
+  --glow-green: 0 0 10px rgba(57, 255, 20, 0.5);
+  --glow-cyan: 0 0 12px rgba(0, 176, 240, 0.5);
+  --shadow-bezel: 0 18px 50px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-panel: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --vignette: radial-gradient(circle at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.55) 100%);  /* @kind other */
+
+  /* ---- Motion (theme.cpp animationDuration = 150ms) ---- */
+  --motion-fast: 100ms;        /* @kind other */
+  --motion-base: 150ms; /* @kind other */ /* every menu/dialog transition uses this */
+  --motion-slow: 280ms;        /* @kind other */
+  --ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1); /* @kind other */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);  /* @kind other */
+  --sweep-interval: 50ms; /* @kind other */
+}

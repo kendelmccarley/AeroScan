@@ -1,0 +1,24 @@
+<!-- @dsCard group="Spacing" viewport="700x300" name="Device geometry" subtitle="800×480 framebuffer — 480 round content + two 160px columns" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  html,body{margin:0;background:#0c0c0c;font-family:var(--font-body)}
+  .wrap{padding:22px;display:flex;justify-content:center}
+  .device{position:relative;width:400px;height:240px;background:var(--bg-shadow);border-radius:10px;display:flex;box-shadow:var(--shadow-bezel)}
+  .col{width:80px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:9px;text-align:center;border-right:1px dashed rgba(255,255,255,.12)}
+  .col.r{border-right:none;border-left:1px dashed rgba(255,255,255,.12)}
+  .content{flex:1;position:relative;display:flex;align-items:center;justify-content:center}
+  .scope{width:200px;height:200px;border-radius:50%;border:2px solid var(--radar-green);box-shadow:var(--glow-green);position:relative;display:flex;align-items:center;justify-content:center}
+  .scope::before{content:"";position:absolute;inset:36px;border-radius:50%;border:1px solid rgba(57,255,20,.35)}
+  .scope::after{content:"";position:absolute;inset:72px;border-radius:50%;border:1px solid rgba(57,255,20,.25)}
+  .ctr{width:5px;height:5px;border-radius:50%;background:var(--radar-green)}
+  .lab{font-family:var(--font-title);font-size:9px;color:var(--text-amber);position:absolute;letter-spacing:.06em}
+</style></head>
+<body><div class="wrap">
+  <div class="device">
+    <div class="col">160px<br/>status / touch</div>
+    <div class="content"><span class="lab" style="top:8px">480 × 480 CONTENT</span><div class="scope"><div class="ctr"></div></div></div>
+    <div class="col r">160px<br/>status / touch</div>
+  </div>
+</div></body></html>

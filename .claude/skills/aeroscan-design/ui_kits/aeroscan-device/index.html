@@ -1,0 +1,103 @@
+<!-- @dsCard group="AeroScan Device" viewport="800x480" -->
+<!-- @startingPoint section="AeroScan Device" subtitle="Full instrument — boot, arc menu, radar, flight list, radio, settings" viewport="800x480" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AeroScan — Device</title>
+<link rel="stylesheet" href="../../styles.css" />
+<style>
+  html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; font-family: var(--font-body); }
+
+  /* Letterboxing stage; device is a fixed 800x480 surface scaled to fit. */
+  #stage { position: relative; }
+  #device {
+    width: 800px; height: 480px;
+    background: radial-gradient(circle at 50% 38%, #16171a 0%, #0a0a0b 70%, #050506 100%);
+    border-radius: var(--radius-bezel);
+    box-shadow: var(--shadow-bezel), 0 0 0 2px #1d1f22, 0 0 0 10px #0c0d0e;
+    display: flex; overflow: hidden; position: relative;
+    transform-origin: center center;
+  }
+
+  #app { display: flex; width: 100%; height: 100%; }
+  /* The three columns: left chrome | 480 content | right status */
+  .col-side { width: 160px; flex: 0 0 auto; position: relative; z-index: 2; }
+  .screen {
+    width: 480px; height: 480px; flex: 0 0 auto; position: relative;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05), inset 0 0 70px rgba(0,0,0,0.8);
+    overflow: hidden;
+  }
+  .screen::after { /* glass vignette */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: var(--vignette); z-index: 50;
+  }
+  .screen-inner { position: absolute; inset: 0; z-index: 1; }
+
+  /* Left chrome column */
+  .brandcol { height: 100%; display: flex; flex-direction: column; align-items: center;
+    justify-content: space-between; padding: 22px 0; box-sizing: border-box; }
+  .brandcol .wm { font-family: var(--font-fancy); font-size: 16px; color: var(--text-amber);
+    text-shadow: var(--glow-amber); letter-spacing: .04em; writing-mode: vertical-rl; transform: rotate(180deg); }
+  .brandcol .av { width: 56px; height: 66px;
+    background: url(../../assets/brand/parhelia-mark.png) center/contain no-repeat;
+    filter: drop-shadow(0 0 7px rgba(248,175,28,0.4)); }
+  .quad { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; width: 116px; }
+  .qbtn { font-family: var(--font-title); font-size: 8.5px; letter-spacing: .08em; color: var(--text-teal);
+    text-transform: uppercase; background: rgba(255,255,255,0.03); border: 1px solid var(--border-hair);
+    border-radius: var(--radius-sm); padding: 7px 0; text-align: center; cursor: pointer; user-select: none;
+    transition: background var(--motion-base), color var(--motion-base), box-shadow var(--motion-base); }
+  .qbtn:hover { background: rgba(255,172,17,0.08); color: var(--text-amber); }
+  .qbtn:active { box-shadow: 0 0 8px rgba(255,172,17,0.35); color: var(--link-magenta); }
+  .qhint { font-family: var(--font-body); font-size: 9px; color: var(--text-muted); opacity:.6; text-align:center; }
+
+  /* fade between screens */
+  .fade-enter { animation: fadein var(--motion-base) var(--ease-out-quart); }
+  @keyframes fadein { from { opacity: 0 } to { opacity: 1 } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="device"><div id="app"></div></div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel" src="screens/RadarScreen.jsx"></script>
+<script type="text/babel" src="screens/FlightScreen.jsx"></script>
+<script type="text/babel" src="screens/RadioScreen.jsx"></script>
+<script type="text/babel" src="screens/SettingsScreen.jsx"></script>
+<script type="text/babel" src="screens/MainMenuScreen.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+<script type="text/babel">
+  // Single mount point. Wait until the app + DS bundle are ready, then root #app once.
+  (function mountWhenReady() {
+    const el = document.getElementById("app");
+    const ready = window.__AeroScanApp && window.AeroScanDesignSystem_2d719c && window.AeroScanDesignSystem_2d719c.StatusBar;
+    if (el && ready && !el.__rooted) {
+      el.__rooted = true;
+      ReactDOM.createRoot(el).render(React.createElement(window.__AeroScanApp));
+    } else if (!el.__rooted) {
+      setTimeout(mountWhenReady, 30);
+    }
+  })();
+</script>
+
+<script>
+  // Fit the 800x480 device into the viewport.
+  function fitStage() {
+    const stage = document.getElementById('device');
+    const pad = 24;
+    const s = Math.min((window.innerWidth - pad) / 800, (window.innerHeight - pad) / 480);
+    stage.style.transform = `scale(${s})`;
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
+</script>
+</body>
+</html>

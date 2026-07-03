@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AeroScan — Screen Navigation Flowchart</title>
+<style>
+  @font-face { font-family: "Neuropol X"; src: url(".claude/skills/aeroscan-design/assets/fonts/neuropol-x-rg.ttf"); }
+  @font-face { font-family: "Sofachrome"; src: url(".claude/skills/aeroscan-design/assets/fonts/sofachrome-rg.ttf"); }
+  @font-face { font-family: "Lato"; src: url(".claude/skills/aeroscan-design/assets/fonts/Lato-Regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "Lato"; src: url(".claude/skills/aeroscan-design/assets/fonts/Lato-Bold.ttf"); font-weight: 700; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0b0d0b;
+    color: #999;
+    font-family: "Lato", sans-serif;
+    min-height: 100vh;
+    padding: 40px 32px 60px;
+  }
+
+  /* ── Header ─────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 48px;
+  }
+  .logo {
+    width: 52px;
+    height: 52px;
+    background: url(".claude/skills/aeroscan-design/assets/brand/parhelia-mark.png") center/contain no-repeat;
+    flex-shrink: 0;
+  }
+  .header-text h1 {
+    font-family: "Neuropol X", monospace;
+    font-size: 22px;
+    color: #ffac11;
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 12px rgba(255,172,17,0.55);
+    text-transform: uppercase;
+  }
+  .header-text p {
+    font-family: "Lato", sans-serif;
+    font-size: 13px;
+    color: #666;
+    margin-top: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Legend ──────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 44px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-family: "Lato", sans-serif;
+    color: #888;
+  }
+  .leg-box {
+    width: 22px;
+    height: 14px;
+    border: 1.5px solid;
+  }
+
+  /* ── Flowchart wrapper ───────────────────── */
+  .chart {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* ── Nodes ───────────────────────────────── */
+  .node {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 20px;
+    border: 1.5px solid;
+    text-align: center;
+    position: relative;
+    min-width: 130px;
+  }
+  .node-label {
+    font-family: "Neuropol X", monospace;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+  }
+  .node-sub {
+    font-family: "Lato", sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    margin-top: 2px;
+  }
+  .node-tag {
+    font-family: "Lato", sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 4px;
+    padding: 1px 5px;
+    border: 1px solid;
+  }
+
+  /* Node variants */
+  .node-boot {
+    border-color: #39ff14;
+    background: rgba(57,255,20,0.06);
+    min-width: 160px;
+  }
+  .node-boot .node-label { color: #39ff14; text-shadow: 0 0 10px rgba(57,255,20,0.6); }
+
+  .node-menu {
+    border-color: #ffac11;
+    background: rgba(255,172,17,0.08);
+    min-width: 180px;
+    padding: 14px 24px;
+  }
+  .node-menu .node-label { color: #ffac11; font-size: 16px; text-shadow: 0 0 14px rgba(255,172,17,0.6); }
+
+  .node-screen {
+    border-color: #ffac11;
+    background: rgba(255,172,17,0.05);
+  }
+  .node-screen .node-label { color: #ffac11; }
+  .node-screen .node-sub { color: #666; }
+
+  .node-screen-kit {
+    border-color: #ffac11;
+    background: rgba(255,172,17,0.05);
+  }
+  .node-screen-kit .node-label { color: #ffac11; }
+  .node-screen-kit .node-tag { color: #39ff14; border-color: rgba(57,255,20,0.4); }
+
+  .node-sub-menu {
+    border-color: #0a7985;
+    background: rgba(10,121,133,0.08);
+    min-width: 120px;
+  }
+  .node-sub-menu .node-label { color: #0a7985; font-size: 12px; }
+
+  .node-leaf {
+    border-color: #36454f;
+    background: rgba(54,69,79,0.3);
+    min-width: 110px;
+  }
+  .node-leaf .node-label { color: #999; font-size: 11px; }
+
+  .node-stub {
+    border-color: #414143;
+    background: rgba(65,65,67,0.2);
+    border-style: dashed;
+    min-width: 130px;
+  }
+  .node-stub .node-label { color: #666; }
+  .node-stub .node-sub { color: #555; }
+  .node-stub .node-tag { color: #666; border-color: #414143; }
+
+  .node-power {
+    border-color: #dd2222;
+    background: rgba(221,34,34,0.06);
+    min-width: 120px;
+  }
+  .node-power .node-label { color: #dd2222; font-size: 12px; }
+
+  /* ── Connectors ─────────────────────────── */
+  .arrow-down {
+    width: 2px;
+    background: #39ff14;
+    box-shadow: 0 0 6px rgba(57,255,20,0.4);
+    height: 32px;
+    position: relative;
+    align-self: center;
+  }
+  .arrow-down::after {
+    content: "";
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid #39ff14;
+  }
+
+  .arrow-down-amber {
+    background: rgba(255,172,17,0.4);
+    box-shadow: none;
+  }
+  .arrow-down-amber::after {
+    border-top-color: rgba(255,172,17,0.4);
+  }
+
+  /* ── Horizontal fan row ─────────────────── */
+  .fan-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .fan-line {
+    width: 100%;
+    position: relative;
+    height: 2px;
+    background: rgba(255,172,17,0.3);
+    margin: 0;
+  }
+
+  .fan-stems {
+    display: flex;
+    width: 100%;
+    justify-content: space-around;
+    align-items: flex-start;
+    padding: 0 16px;
+    gap: 8px;
+  }
+
+  .fan-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    flex: 1;
+  }
+
+  .fan-stem {
+    width: 2px;
+    height: 28px;
+    background: rgba(255,172,17,0.3);
+    position: relative;
+  }
+  .fan-stem::after {
+    content: "";
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid rgba(255,172,17,0.5);
+  }
+
+  .fan-stem-green {
+    background: rgba(57,255,20,0.4);
+  }
+  .fan-stem-green::after {
+    border-top-color: rgba(57,255,20,0.5);
+  }
+
+  /* ── Back arrows ─────────────────────────── */
+  .back-note {
+    font-family: "Lato", sans-serif;
+    font-size: 11px;
+    color: #666;
+    letter-spacing: 0.03em;
+    margin-top: 6px;
+  }
+
+  /* ── Internal details ────────────────────── */
+  .internals {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    align-items: center;
+  }
+  .int-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: "Lato", sans-serif;
+    font-size: 10px;
+    color: #555;
+  }
+  .int-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #39ff14;
+    flex-shrink: 0;
+  }
+
+  /* ── Section spacers ─────────────────────── */
+  .section-label {
+    font-family: "Neuropol X", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #444;
+    text-transform: uppercase;
+    margin: 40px 0 16px;
+    align-self: flex-start;
+    border-bottom: 1px solid #222;
+    padding-bottom: 6px;
+    width: 100%;
+  }
+
+  /* ── Sub-menu expansion ─────────────────── */
+  .submenu-fan {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 0;
+  }
+  .submenu-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* ── Back return line ────────────────────── */
+  .back-return {
+    font-family: "Lato", sans-serif;
+    font-size: 11px;
+    color: #36454f;
+    margin-top: 8px;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .back-return::before {
+    content: "◄";
+    font-size: 10px;
+    color: #0a7985;
+  }
+
+  /* ── Full layout ─────────────────────────── */
+  .row-center { display: flex; justify-content: center; }
+  .gap-md { gap: 16px; }
+  .mt-1 { margin-top: 6px; }
+  .mt-2 { margin-top: 12px; }
+  .mt-3 { margin-top: 24px; }
+  .mt-4 { margin-top: 36px; }
+
+  .divider {
+    width: 100%;
+    height: 1px;
+    background: #1a1a1a;
+    margin: 40px 0;
+  }
+
+  /* ── Key panel at bottom ─────────────────── */
+  .keys-panel {
+    margin-top: 56px;
+    padding: 20px 24px;
+    border: 1px solid #222;
+    background: rgba(36,45,50,0.3);
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .keys-title {
+    font-family: "Neuropol X", monospace;
+    font-size: 11px;
+    color: #ffac11;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .keys-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .key-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .key-chip {
+    font-family: "Neuropol X", monospace;
+    font-size: 10px;
+    color: #0a7985;
+    border: 1px solid #0a7985;
+    padding: 1px 6px;
+    flex-shrink: 0;
+  }
+  .key-desc {
+    font-family: "Lato", sans-serif;
+    font-size: 11px;
+    color: #666;
+  }
+
+  hr.scope { border: none; border-top: 1px solid rgba(57,255,20,0.15); margin: 48px 0 32px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo"></div>
+  <div class="header-text">
+    <h1>AeroScan — Screen Navigation</h1>
+    <p>Parhelia Technology · Qt5 embedded badge · 800×480 HDMI touchscreen</p>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item">
+    <div class="leg-box" style="border-color:#ffac11; background:rgba(255,172,17,0.08)"></div>
+    Implemented (firmware + UI kit)
+  </div>
+  <div class="legend-item">
+    <div class="leg-box" style="border-color:#ffac11; background:rgba(255,172,17,0.04)"></div>
+    Firmware only (not in UI kit)
+  </div>
+  <div class="legend-item">
+    <div class="leg-box" style="border-color:#414143; background:rgba(65,65,67,0.2); border-style:dashed"></div>
+    Stub / planned (dashed)
+  </div>
+  <div class="legend-item">
+    <div class="leg-box" style="border-color:#0a7985; background:rgba(10,121,133,0.08)"></div>
+    Submenu
+  </div>
+  <div class="legend-item">
+    <div class="leg-box" style="border-color:#dd2222; background:rgba(221,34,34,0.06)"></div>
+    Power / system
+  </div>
+  <div class="legend-item" style="gap:10px">
+    <div style="width:32px;height:2px;background:#39ff14;box-shadow:0 0 6px rgba(57,255,20,.4)"></div>
+    Boot flow
+  </div>
+  <div class="legend-item" style="gap:10px">
+    <div style="width:32px;height:2px;background:rgba(255,172,17,0.35)"></div>
+    Navigation
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     CHART
+════════════════════════════════════════════ -->
+<div class="chart">
+
+  <!-- Boot -->
+  <div class="node node-boot">
+    <div class="node-label">Boot / Splash</div>
+    <div class="node-sub" style="color:#39ff14;opacity:.7;font-size:10px">FrogFly splash · Buildroot init</div>
+  </div>
+
+  <div class="arrow-down"></div>
+
+  <!-- Main Menu -->
+  <div class="node node-menu">
+    <div class="node-label">Main Menu</div>
+    <div class="node-sub" style="color:#0a7985;font-size:11px">Arc scroll · Up/Down · Select</div>
+  </div>
+
+  <!-- Fan line out from Main Menu -->
+  <div style="width:100%; height:24px; position:relative; margin-top:0;">
+    <div style="position:absolute; left:50%; top:0; width:2px; height:24px; background:rgba(255,172,17,0.3); transform:translateX(-50%);"></div>
+    <!-- horizontal bar -->
+    <div style="position:absolute; left:4%; right:4%; top:23px; height:2px; background:rgba(255,172,17,0.3);"></div>
+  </div>
+
+  <!-- 8 column fan -->
+  <div class="fan-stems">
+
+    <!-- Extras submenu -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-sub-menu" style="min-width:90px">
+        <div class="node-label">Extras</div>
+        <div class="node-sub" style="color:#666;font-size:9px">submenu</div>
+      </div>
+      <div style="width:2px;height:20px;background:rgba(10,121,133,0.3);position:relative;">
+        <div style="position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid rgba(10,121,133,0.5);"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:center;margin-top:4px">
+        <div class="node node-leaf" style="min-width:96px;padding:6px 10px">
+          <div class="node-label">Clock</div>
+        </div>
+        <div class="node node-leaf" style="min-width:96px;padding:6px 10px">
+          <div class="node-label">Media Player</div>
+        </div>
+        <div class="node node-leaf" style="min-width:96px;padding:6px 10px">
+          <div class="node-label">GB Emulator</div>
+        </div>
+        <div class="node node-leaf" style="min-width:96px;padding:6px 10px">
+          <div class="node-label">OScope</div>
+          <div class="node-sub" style="font-size:9px">Starman easter egg</div>
+        </div>
+        <div class="node node-leaf" style="min-width:96px;padding:6px 10px">
+          <div class="node-label">GPS List</div>
+        </div>
+        <div class="node node-leaf" style="min-width:96px;padding:6px 10px">
+          <div class="node-label">GPS Tracker</div>
+        </div>
+      </div>
+      <div class="back-return">back to menu</div>
+    </div>
+
+    <!-- Map Scope -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-screen" style="min-width:96px">
+        <div class="node-label">Map Scope</div>
+        <div class="node-sub">OpenMapTiles</div>
+        <div class="node-sub" style="font-size:9px">Dark Matter style</div>
+      </div>
+      <div class="back-return mt-2">back</div>
+    </div>
+
+    <!-- Radar Scope -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-screen-kit">
+        <div class="node-label">Radar Scope</div>
+        <div class="node-sub">ADS-B · Live sweep</div>
+        <div class="node-tag">UI Kit</div>
+      </div>
+      <div class="internals mt-2">
+        <div class="int-row"><div class="int-dot"></div>▲▼ Zoom: 50 / 25 / 10 nm</div>
+        <div class="int-row"><div class="int-dot"></div>Carrier-tinted chevrons</div>
+        <div class="int-row"><div class="int-dot"></div">Sweep ~50ms tick</div>
+      </div>
+      <div class="back-return mt-2">back</div>
+    </div>
+
+    <!-- Flight List -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-screen-kit">
+        <div class="node-label">Flight List</div>
+        <div class="node-sub">ADS-B table</div>
+        <div class="node-tag">UI Kit</div>
+      </div>
+      <div class="internals mt-2">
+        <div class="int-row"><div class="int-dot"></div>▲▼ row cursor</div>
+        <div class="int-row"><div class="int-dot"></div>● cycle sort col</div>
+        <div class="int-row"><div class="int-dot"></div>Total Aircraft readout</div>
+      </div>
+      <div class="back-return mt-2">back</div>
+    </div>
+
+    <!-- Credits -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-screen" style="min-width:90px">
+        <div class="node-label">Credits</div>
+        <div class="node-sub" style="font-size:9px">Sofachrome lockup</div>
+      </div>
+      <div class="back-return mt-2">back</div>
+    </div>
+
+    <!-- Settings -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-screen-kit">
+        <div class="node-label">Settings</div>
+        <div class="node-sub">Config toggles</div>
+        <div class="node-tag">UI Kit</div>
+      </div>
+      <div class="internals mt-2">
+        <div class="int-row"><div class="int-dot"></div>Dark Maps toggle</div>
+        <div class="int-row"><div class="int-dot"></div>12-Hr Clock toggle</div>
+        <div class="int-row"><div class="int-dot"></div>Inverted Scroll</div>
+        <div class="int-row"><div class="int-dot"></div>Persist Position</div>
+        <div class="int-row"><div class="int-dot"></div>Fast Charge</div>
+        <div class="int-row"><div class="int-dot"></div>ADS-B Receiver</div>
+      </div>
+      <div class="back-return mt-2">back</div>
+    </div>
+
+    <!-- Power submenu -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-power" style="min-width:90px">
+        <div class="node-label">Power</div>
+        <div class="node-sub" style="color:#888;font-size:9px">submenu</div>
+      </div>
+      <div style="width:2px;height:20px;background:rgba(221,34,34,0.3);position:relative;margin-top:0;">
+        <div style="position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid rgba(221,34,34,0.5);"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:center;margin-top:4px">
+        <div class="node node-power" style="min-width:90px;padding:5px 10px">
+          <div class="node-label" style="font-size:10px">Poweroff</div>
+        </div>
+        <div class="node node-power" style="min-width:90px;padding:5px 10px">
+          <div class="node-label" style="font-size:10px">Reboot</div>
+        </div>
+        <div class="node node-leaf" style="min-width:90px;padding:5px 10px">
+          <div class="node-label" style="font-size:10px">Exit to Term</div>
+        </div>
+        <div class="node node-leaf" style="min-width:90px;padding:5px 10px">
+          <div class="node-label" style="font-size:10px">Restart UI</div>
+        </div>
+        <div class="node node-leaf" style="min-width:90px;padding:5px 10px">
+          <div class="node-label" style="font-size:10px">Debug Mode</div>
+        </div>
+      </div>
+      <div class="back-return mt-2">back to menu</div>
+    </div>
+
+    <!-- Radio Tuner -->
+    <div class="fan-col">
+      <div class="fan-stem"></div>
+      <div class="node node-screen-kit">
+        <div class="node-label">Radio Tuner</div>
+        <div class="node-sub">RTL-SDR</div>
+        <div class="node-tag">UI Kit</div>
+      </div>
+      <div class="internals mt-2">
+        <div class="int-row"><div class="int-dot"></div>Band: AM / FM / 2m</div>
+        <div class="int-row"><div class="int-dot"></div>▲▼ preset scroll</div>
+        <div class="int-row"><div class="int-dot"></div>● tune frequency</div>
+        <div class="int-row" style="color:#dd2222;"><div class="int-dot" style="background:#dd2222"></div>Stops ADS-B while open</div>
+      </div>
+      <div class="back-return mt-2">back · restarts ADS-B</div>
+    </div>
+
+  </div><!-- /fan-stems -->
+
+  <hr class="scope" style="width:100%">
+
+  <!-- Planned / stub screens -->
+  <div class="section-label">Planned — Phase 7+ (stubs present in firmware)</div>
+
+  <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+
+    <div class="node node-stub">
+      <div class="node-label">Drone Board</div>
+      <div class="node-sub">Remote ID</div>
+      <div class="node-tag">Phase 7 stub</div>
+    </div>
+
+    <div class="node node-stub">
+      <div class="node-label">Compass</div>
+      <div class="node-sub">Bearing display</div>
+      <div class="node-tag">Phase 10</div>
+    </div>
+
+    <div class="node node-stub">
+      <div class="node-label">APRS Stations</div>
+      <div class="node-sub">2m packet decode</div>
+      <div class="node-tag">Phase 11</div>
+    </div>
+
+  </div>
+
+</div><!-- /chart -->
+
+<!-- Input reference -->
+<div class="keys-panel">
+  <div class="keys-title">Input Reference — All Screens</div>
+  <div class="keys-grid">
+    <div class="key-row">
+      <div class="key-chip">▲ UP</div>
+      <div class="key-desc">Scroll up / zoom in</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">▼ DN</div>
+      <div class="key-desc">Scroll down / zoom out</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">● SEL</div>
+      <div class="key-desc">Select / confirm / toggle</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">◄ BACK</div>
+      <div class="key-desc">Return to Main Menu</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">TOUCH</div>
+      <div class="key-desc">4-quadrant mapped to UP/SEL/DN/BACK</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">kbd ↑↓</div>
+      <div class="key-desc">Arrow keys (UI kit only)</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">↵ / SPC</div>
+      <div class="key-desc">Select (UI kit only)</div>
+    </div>
+    <div class="key-row">
+      <div class="key-chip">ESC / ⌫</div>
+      <div class="key-desc">Back (UI kit only)</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

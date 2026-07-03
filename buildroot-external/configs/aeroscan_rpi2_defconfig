@@ -1,0 +1,168 @@
+# AeroScan Buildroot defconfig — Raspberry Pi 2 Model B v1.1
+# Hardware : BCM2836, quad-core Cortex-A7 @ 900 MHz, ARMv7, 1 GB RAM
+# Buildroot: 2024.02.x
+#
+# Build:
+#   make download-buildroot           (one-time)
+#   make rpi2                         (configure + build)
+#   dd if=output/rpi2/images/sdcard.img of=/dev/sdX bs=4M status=progress
+
+# ─── Architecture ─────────────────────────────────────────────────────────────
+BR2_arm=y
+BR2_cortex_a7=y
+BR2_ARM_EABIHF=y
+BR2_ARM_FPU_NEON_VFPV4=y
+BR2_ARM_INSTRUCTIONS_THUMB2=y
+
+# ─── Toolchain ────────────────────────────────────────────────────────────────
+# glibc is required by systemd; wchar + locale for Qt5
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_TOOLCHAIN_BUILDROOT_WCHAR=y
+BR2_TOOLCHAIN_BUILDROOT_LOCALE=y
+BR2_TOOLCHAIN_BUILDROOT_LIBC="glibc"
+BR2_PACKAGE_GLIBC_UTILS=y
+# RPi Foundation kernel at this commit is Linux 6.1.x
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_1=y
+
+# ─── Build options ────────────────────────────────────────────────────────────
+BR2_PACKAGE_OVERRIDE_FILE="$(BR2_EXTERNAL_AEROSCAN_PATH)/local.mk"
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_AEROSCAN_PATH)/patches"
+
+# ─── System ───────────────────────────────────────────────────────────────────
+BR2_TARGET_GENERIC_HOSTNAME="aeroscan"
+BR2_TARGET_GENERIC_ISSUE="AeroScan on \\l"
+BR2_TARGET_GENERIC_ROOT_PASSWD="aeroscan"
+BR2_TARGET_GENERIC_GETTY_PORT="ttyAMA0"
+BR2_TARGET_TZ_INFO=y
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/common/overlay $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/post-image.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/genimage.cfg"
+
+# ─── Init: systemd ────────────────────────────────────────────────────────────
+BR2_INIT_SYSTEMD=y
+
+# ─── Linux kernel — Raspberry Pi Foundation tree ──────────────────────────────
+# Commit hash taken from buildroot/configs/raspberrypi2_defconfig.
+# To update: check that file after upgrading Buildroot.
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,raspberrypi,linux,17f135b742c4edb340afb365873c3a574f7e16cb)/linux-17f135b742c4edb340afb365873c3a574f7e16cb.tar.gz"
+BR2_LINUX_KERNEL_DEFCONFIG="bcm2709"
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="bcm2709-rpi-2-b"
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/linux/spi-ads7846.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/linux/wifi-rt5370.fragment"
+
+# ─── RPi firmware (GPU bootloader blobs) ─────────────────────────────────────
+# config.txt is installed from board/rpi2/config.txt;
+# cmdline.txt is installed by post-image.sh.
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI=y
+BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi2/config.txt"
+
+# ─── Base system ──────────────────────────────────────────────────────────────
+BR2_PACKAGE_BUSYBOX=y
+BR2_PACKAGE_CA_CERTIFICATES=y
+BR2_PACKAGE_KMOD=y
+BR2_PACKAGE_KMOD_TOOLS=y
+BR2_PACKAGE_XZ=y
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_LIBERATION=y
+
+# ─── GPIO ─────────────────────────────────────────────────────────────────────
+BR2_PACKAGE_LIBGPIOD=y
+BR2_PACKAGE_LIBGPIOD_TOOLS=y
+
+# ─── ADS-B (RTL-SDR + dump1090) ───────────────────────────────────────────────
+# RTL-SDR dongle (RTL2832U) accessed via libusb; DVB drivers are blacklisted
+# via /etc/modprobe.d/rtlsdr.conf so librtlsdr can claim the device.
+BR2_PACKAGE_LIBUSB=y
+BR2_PACKAGE_LIBRTLSDR=y
+BR2_PACKAGE_DUMP1090=y
+
+# ─── GPS ──────────────────────────────────────────────────────────────────────
+# NEO-6M appears on /dev/ttyUSB0 via USB-UART adapter
+BR2_PACKAGE_GPSD=y
+BR2_PACKAGE_GPSD_DEVICES="/dev/ttyACM0"
+BR2_PACKAGE_GPSD_USER=y
+BR2_PACKAGE_GPSD_USER_VALUE="root"
+BR2_PACKAGE_GPSD_GROUP=y
+BR2_PACKAGE_GPSD_GROUP_VALUE="root"
+BR2_PACKAGE_GPSD_PYTHON=y
+BR2_PACKAGE_GPSD_UBX=y
+
+# ─── Python 3 (Phase 11: DroneAware BLE/WiFi feeders) ────────────────────────
+BR2_PACKAGE_PYTHON3=y
+
+# ─── Networking ───────────────────────────────────────────────────────────────
+# WiFi: Ralink RT5370 (148f:5370) — driver rt2800usb, firmware rt2870.bin
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA_CLIENT_SO=y
+BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
+BR2_PACKAGE_IPROUTE2=y
+BR2_PACKAGE_OPENSSH=y
+# systemd network and time services
+BR2_PACKAGE_SYSTEMD_NETWORKD=y
+BR2_PACKAGE_SYSTEMD_RESOLVED=y
+BR2_PACKAGE_SYSTEMD_TIMESYNCD=y
+
+# ─── Qt5 — linuxfb (HDMI framebuffer) ────────────────────────────────────────
+BR2_PACKAGE_QT5=y
+BR2_PACKAGE_QT5BASE_DEFAULT_QPA="linuxfb"
+BR2_PACKAGE_QT5BASE_GUI=y
+BR2_PACKAGE_QT5BASE_WIDGETS=y
+BR2_PACKAGE_QT5BASE_NETWORK=y
+BR2_PACKAGE_QT5BASE_FONTCONFIG=y
+BR2_PACKAGE_QT5BASE_GIF=y
+BR2_PACKAGE_QT5BASE_JPEG=y
+BR2_PACKAGE_QT5BASE_PNG=y
+BR2_PACKAGE_QT5MULTIMEDIA=y
+BR2_PACKAGE_QT5SVG=y
+BR2_PACKAGE_QT5TOOLS=y
+BR2_PACKAGE_QT5TOOLS_LINGUIST_TOOLS=y
+BR2_PACKAGE_QT5TOOLS_QTDIAG=y
+
+# ─── GStreamer 1.0 ────────────────────────────────────────────────────────────
+BR2_PACKAGE_GSTREAMER1=y
+BR2_PACKAGE_GST1_PLUGINS_BASE=y
+BR2_PACKAGE_GST1_PLUGINS_BASE_INSTALL_TOOLS=y
+BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_OGG=y
+BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOTESTSRC=y
+BR2_PACKAGE_GST1_PLUGINS_GOOD=y
+BR2_PACKAGE_GST1_PLUGINS_GOOD_JPEG=y
+BR2_PACKAGE_GST1_PLUGINS_GOOD_PNG=y
+BR2_PACKAGE_GST1_PLUGINS_BAD=y
+BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_FBDEV=y
+
+# ─── AeroScan GUI application ────────────────────────────────────────────────
+BR2_PACKAGE_AEROSCAN_GUI=y
+
+# ─── Touch (XPT2046 via ads7846 driver + tslib calibration) ──────────────────
+BR2_PACKAGE_TSLIB=y
+BR2_PACKAGE_QT5BASE_TSLIB=y
+
+# ─── Input testing ────────────────────────────────────────────────────────────
+BR2_PACKAGE_EVTEST=y
+
+# ─── Debug / dev utilities ────────────────────────────────────────────────────
+BR2_PACKAGE_GDB=y
+BR2_PACKAGE_STRACE=y
+BR2_PACKAGE_HTOP=y
+BR2_PACKAGE_NANO=y
+
+# ─── Root filesystem ──────────────────────────────────────────────────────────
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_LABEL="aeroscan-root"
+BR2_TARGET_ROOTFS_EXT2_SIZE="1500M"
+
+# ─── Host tools (needed by post-image.sh) ─────────────────────────────────────
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_MTOOLS=y

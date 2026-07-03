@@ -1,0 +1,33 @@
+#!/bin/sh
+# Disable BCM4345C0 UART deep sleep (LPM) within the 1-2s window after hci0 UP.
+#
+# BCM4345C0 on RPi4 enters UART deep sleep within 1-2s of UART idle.
+# The RPi4 DT has no device-wakeup-gpios so the kernel cannot assert BT_DEV_WAKE
+# to recover a sleeping chip. Once asleep, all HCI commands fail with ETIMEDOUT.
+#
+# Fix: send HCI_VSC_Write_Sleep_Mode (OGF=0x3f OCF=0x27, 12 zero bytes) within
+# the 1-2s window. Setting resets on firmware reload (reboot) so this runs
+# every boot. hcitool comes from BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y.
+
+# Poll for hci0 UP RUNNING in 100ms ticks (30s timeout).
+# hciconfig is a kernel ioctl — does NOT send an HCI command, so it works
+# even when the chip is asleep — meaning we catch the UP transition accurately.
+i=0
+while [ $i -lt 300 ]; do
+    hciconfig hci0 2>/dev/null | grep -q "UP RUNNING" && break
+    sleep 0.1
+    i=$((i + 1))
+done
+
+if ! hciconfig hci0 2>/dev/null | grep -q "UP RUNNING"; then
+    echo "aeroscan-bt-init: hci0 UP RUNNING not seen after 30s — aborting"
+    exit 1
+fi
+
+# Chip just came UP — send LPM disable immediately before the first sleep cycle.
+# Expected HCI event response: 01 27 FC 00  (status byte 0x00 = accepted)
+hcitool -i hci0 cmd 0x3f 0x27 \
+    0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
+# Enable page scan so the keyboard can page our BD_ADDR and reconnect.
+hciconfig hci0 piscan

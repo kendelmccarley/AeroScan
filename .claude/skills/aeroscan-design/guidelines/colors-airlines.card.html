@@ -1,0 +1,21 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Air-traffic identity" subtitle="Callsign tint by carrier (radarscope AIRLINE_COLORS)" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  html,body{margin:0;background:#0c0c0c;font-family:var(--font-body)}
+  .wrap{padding:20px;display:flex;gap:14px;flex-wrap:wrap}
+  .sw{flex:1 1 0;min-width:96px;border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--shadow-panel)}
+  .chip{height:60px}
+  .meta{padding:8px 10px;background:rgba(255,255,255,0.03)}
+  .name{font-family:var(--font-title);font-size:11px;letter-spacing:var(--tracking-label);color:var(--text-muted);text-transform:uppercase}
+  .hex{font-size:11px;color:var(--text-muted);opacity:.7;margin-top:3px;font-family:var(--font-body)}
+</style></head>
+<body><div class="wrap">
+  <div class="sw"><div class="chip" style="background:var(--air-swa)"></div><div class="meta"><div class="name">SWA</div><div class="hex">#ffa500</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--air-dal)"></div><div class="meta"><div class="name">DAL / UAL</div><div class="hex">#0000ff</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--air-aal)"></div><div class="meta"><div class="name">AAL</div><div class="hex">#ff0000</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--air-ups)"></div><div class="meta"><div class="name">UPS</div><div class="hex">#8b4513</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--air-fdx)"></div><div class="meta"><div class="name">FDX</div><div class="hex">#a219ff</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--air-unknown)"></div><div class="meta"><div class="name">Unknown</div><div class="hex">#999999</div></div></div>
+</div></body></html>

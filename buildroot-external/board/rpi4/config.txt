@@ -1,0 +1,83 @@
+# AeroScan RPi 4 — GPU firmware boot configuration
+
+# ─── 64-bit mode ──────────────────────────────────────────────────────────────
+arm_64bit=1
+
+# ─── RPi4 firmware files ──────────────────────────────────────────────────────
+start_file=start4.elf
+fixup_file=fixup4.dat
+
+# ─── Kernel image ─────────────────────────────────────────────────────────────
+# AArch64 kernel is an uncompressed Image (not zImage).
+kernel=Image
+
+# ─── Serial console ───────────────────────────────────────────────────────────
+# enable_uart=1 enables the mini-UART on GPIO14/15 for the serial console and
+# pins core_freq_min=250 so the baud rate stays stable.
+# miniuart-bt is NOT used: on RPi4, BT uses PL011 uart0 (ttyAMA0) natively
+# which is far more stable than the mini-UART at the 3 Mbps BT baud rate.
+# The console therefore lives on the mini-UART (ttyS0) — see cmdline.txt.
+enable_uart=1
+
+# ─── Bluetooth ────────────────────────────────────────────────────────────────
+# krnbt=on tells the kernel to auto-attach the BCM43xx HCI device via ttyAMA0;
+# no userspace hciattach or btattach is needed.
+dtparam=krnbt=on
+
+# ─── KMS/DRM display driver ───────────────────────────────────────────────────
+# Enables the open-source VC4/V3D KMS driver used by Mesa and Qt5 eglfs.
+# display_rotate is NOT respected under KMS — rotation is handled by
+# Qt5's eglfs_kms JSON config at /etc/qt-kms.json instead.
+dtoverlay=vc4-kms-v3d
+
+# ─── Display ──────────────────────────────────────────────────────────────────
+# Waveshare 480x800 panel is on HDMI0 (the micro-HDMI port closest to USB-C).
+# RPi4 firmware uses :0 suffix for HDMI0 and :1 suffix for HDMI1.
+# hdmi_force_hotplug:0=1 — forces HDMI0 output without waiting for HPD; the
+#   Waveshare panel does not assert HPD, so without this KMS sees the port as
+#   disconnected and ignores it entirely. This was the root cause of HDMI0 never
+#   producing output: only HDMI1 had force_hotplug set in the previous config.
+# hdmi_group/mode/cvt:0  — set the firmware-phase mode (rainbow + early fb).
+# KMS (vc4-kms-v3d) inherits the HDMI0 connection. Qt5 eglfs_kms renders to
+#   HDMI-A-1 via V3D EGL (separateEglDevice). Landscape rotation is applied
+#   by QT_QPA_EGLFS_ROTATION=90 in qt_env.sh (V3D GL compositor, not DRM plane).
+# hdmi_drive:0=2 — HDMI mode with audio (needed for the HDMI option in
+#   Settings → Audio). If the panel fails to sync in this mode, revert to
+#   hdmi_drive:0=1 (DVI mode, no audio).
+# NOTE: no video= in cmdline.txt — adding it caused complete display loss.
+hdmi_force_hotplug:0=1
+hdmi_drive:0=2
+hdmi_group:0=2
+hdmi_mode:0=87
+hdmi_cvt:0=480 800 60 6 0 0 0
+disable_overscan:0=1
+
+# Rainbow splash experiment: if the firmware-phase output never syncs on the
+# Waveshare panel (no rainbow at power-on), try explicit panel timings in
+# place of the generic CVT mode (values from the Waveshare 4" HDMI wiki):
+# hdmi_timings:0=480 0 40 10 80 800 0 13 3 32 0 0 0 60 0 32000000 3
+
+# ─── DSI display auto-detect ──────────────────────────────────────────────────
+# The firmware probes the DSI connector I2C at boot and, if it finds an
+# official-7"-touchscreen-compatible panel (official RPi 7", Hosyond 5"/7",
+# and most other "driver-free" clones), loads the panel overlay automatically.
+# The DSI-1 DRM connector then appears and aeroscan-display-init prefers it
+# over HDMI (HDMI-A-1 always reads connected due to force_hotplug).
+# If a clone panel is NOT auto-detected, force it instead with:
+# dtoverlay=vc4-kms-dsi-7inch
+display_auto_detect=1
+
+# ─── Audio ────────────────────────────────────────────────────────────────────
+# bcm2835 analog audio (3.5mm headphone jack). HDMI audio comes from the vc4
+# KMS driver (requires hdmi_drive:0=2 above). The active output is selected
+# from Settings → Audio, which writes /etc/asound.conf.
+dtparam=audio=on
+
+# ─── GPU memory ───────────────────────────────────────────────────────────────
+# Mesa/V3D uses kernel DRM, not the firmware GPU; 64 MB is sufficient for boot.
+gpu_mem=64
+
+# ─── SPI + XPT2046 touch ──────────────────────────────────────────────────────
+# SPI0: same GPIO assignments as RPi 2 (BCM2711 reuses BCM2835 SPI IP block).
+dtparam=spi=on
+dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900

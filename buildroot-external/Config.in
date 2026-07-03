@@ -1,0 +1,11 @@
+menu "AeroScan Configuration"
+
+config AEROSCAN_VERSION
+	string "AeroScan version string"
+	default "0.1"
+	help
+	  Version embedded in /usr/lib/os-release as IMAGE_VERSION.
+
+endmenu
+
+source "$BR2_EXTERNAL_AEROSCAN_PATH/package/Config.in"

@@ -1,0 +1,8 @@
+config BR2_PACKAGE_RPI4_WIFI_FIRMWARE
+	bool "rpi4-wifi-firmware"
+	help
+	  Device-specific BCM43455 WiFi firmware for Raspberry Pi 4.
+	  Sourced from RPi-Distro/firmware-nonfree (bookworm branch).
+	  Installs brcmfmac43455-sdio.raspberrypi,4-model-b.{bin,clm_blob,txt}
+	  into /lib/firmware/brcm/ so the brcmfmac driver finds them on first
+	  probe (before falling back to the generic brcmfmac43455-sdio.bin).

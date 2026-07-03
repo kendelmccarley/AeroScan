@@ -1,0 +1,72 @@
+#!/bin/sh
+# Detect the attached display and generate the Qt eglfs KMS config + env for
+# aeroscan-gui (ExecStartPre). DSI is preferred over HDMI when both are
+# present, because HDMI-A-1 always reads "connected" (vc4.force_hotplug=1 is
+# required for the Waveshare HDMI panel, which never asserts HPD).
+#
+# Display matrix:
+#   DSI-1 connected  → Hosyond 5"/7" or official RPi 7" (800x480 landscape):
+#                      no rotation, touch (FT5426/edt-ft5406) already landscape
+#   HDMI-A-1         → Waveshare 4" HDMI (480x800 portrait panel):
+#                      render rotated 90° (V3D compositor), touch rotated 270°
+#
+# Output:
+#   /run/aeroscan/qt-kms.json   — eglfs KMS backend config (correct card + output)
+#   /run/aeroscan/display.env   — sourced by aeroscan-gui.service (EnvironmentFile)
+
+RUN_DIR=/run/aeroscan
+mkdir -p "$RUN_DIR"
+
+# Find the connected connector, preferring DSI. Connector dirs look like
+# /sys/class/drm/card1-DSI-1; the vc4 card owns them (v3d has none), so the
+# card node is derived from the matching connector instead of being hardcoded.
+CONNECTOR=""
+CARD=""
+for want in DSI-1 HDMI-A-1; do
+    for dir in /sys/class/drm/card[0-9]-"$want"; do
+        [ -f "$dir/status" ] || continue
+        if [ "$(cat "$dir/status")" = "connected" ]; then
+            CONNECTOR="$want"
+            CARD="/dev/dri/$(basename "$dir" | sed "s/-$want\$//")"
+            break 2
+        fi
+    done
+done
+
+if [ -z "$CONNECTOR" ]; then
+    echo "aeroscan-display-init: no connected display found; keeping static defaults"
+    exit 0
+fi
+
+case "$CONNECTOR" in
+DSI-1)
+    ROTATION=0
+    TOUCH_PARAMS="/dev/input/touchscreen0"
+    ;;
+*)
+    # XPT2046 axes are swapped and both inverted vs the landscape view;
+    # inversions apply before rotation (verified empirically 2026-07-03)
+    ROTATION=90
+    TOUCH_PARAMS="/dev/input/touchscreen0:rotate=270:invertx:inverty"
+    ;;
+esac
+
+cat > "$RUN_DIR/qt-kms.json" <<EOF
+{
+  "device": "$CARD",
+  "separateEglDevice": true,
+  "outputs": [
+    {
+      "name": "$CONNECTOR"
+    }
+  ]
+}
+EOF
+
+cat > "$RUN_DIR/display.env" <<EOF
+QT_QPA_EGLFS_KMS_CONFIG=$RUN_DIR/qt-kms.json
+QT_QPA_EGLFS_ROTATION=$ROTATION
+QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=$TOUCH_PARAMS
+EOF
+
+echo "aeroscan-display-init: $CONNECTOR on $CARD (rotation=$ROTATION)"

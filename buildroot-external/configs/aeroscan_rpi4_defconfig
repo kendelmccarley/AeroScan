@@ -1,0 +1,200 @@
+# AeroScan Buildroot defconfig — Raspberry Pi 4 Model B (64-bit)
+# Hardware : BCM2711, quad-core Cortex-A72 @ 1.8 GHz, AArch64, 1–8 GB RAM
+# Buildroot: 2024.02.x
+#
+# Build:
+#   make download-buildroot           (one-time)
+#   make rpi4                         (configure + build)
+#   dd if=output/rpi4/images/sdcard.img of=/dev/sdX bs=4M status=progress
+
+# ─── Architecture ─────────────────────────────────────────────────────────────
+BR2_aarch64=y
+BR2_cortex_a72=y
+
+# ─── Toolchain ────────────────────────────────────────────────────────────────
+# glibc required by systemd; wchar + locale for Qt5
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_TOOLCHAIN_BUILDROOT_WCHAR=y
+BR2_TOOLCHAIN_BUILDROOT_LOCALE=y
+BR2_TOOLCHAIN_BUILDROOT_LIBC="glibc"
+BR2_PACKAGE_GLIBC_UTILS=y
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_1=y
+
+# ─── Build options ────────────────────────────────────────────────────────────
+BR2_PACKAGE_OVERRIDE_FILE="$(BR2_EXTERNAL_AEROSCAN_PATH)/local.mk"
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_AEROSCAN_PATH)/patches"
+
+# ─── System ───────────────────────────────────────────────────────────────────
+BR2_TARGET_GENERIC_HOSTNAME="aeroscan"
+BR2_TARGET_GENERIC_ISSUE="AeroScan on \\l"
+BR2_TARGET_GENERIC_ROOT_PASSWD="aeroscan"
+# RPi4 with krnbt=on: PL011 (ttyAMA0) is owned by BT; mini-UART (ttyS0) = console
+BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
+BR2_TARGET_TZ_INFO=y
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/common/overlay $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/post-build.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/post-image.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/genimage.cfg"
+
+# ─── Init: systemd ────────────────────────────────────────────────────────────
+BR2_INIT_SYSTEMD=y
+
+# ─── Linux kernel — Raspberry Pi Foundation tree ──────────────────────────────
+# Same commit hash as rpi2; bcm2711_defconfig covers RPi 4.
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,raspberrypi,linux,17f135b742c4edb340afb365873c3a574f7e16cb)/linux-17f135b742c4edb340afb365873c3a574f7e16cb.tar.gz"
+BR2_LINUX_KERNEL_DEFCONFIG="bcm2711"
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2711-rpi-4-b"
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/spi-ads7846.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/wifi-rt5370.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/kms.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/bluetooth.fragment"
+
+# ─── RPi firmware (GPU bootloader blobs) ─────────────────────────────────────
+# RPi4 uses EEPROM for first-stage boot — no bootcode.bin needed.
+# config.txt is installed from board/rpi4/config.txt.
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI4=y
+BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/config.txt"
+
+# ─── Base system ──────────────────────────────────────────────────────────────
+BR2_PACKAGE_BUSYBOX=y
+BR2_PACKAGE_CA_CERTIFICATES=y
+BR2_PACKAGE_KMOD=y
+BR2_PACKAGE_KMOD_TOOLS=y
+BR2_PACKAGE_XZ=y
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_LIBERATION=y
+
+# ─── GPIO ─────────────────────────────────────────────────────────────────────
+BR2_PACKAGE_LIBGPIOD=y
+BR2_PACKAGE_LIBGPIOD_TOOLS=y
+
+# ─── ADS-B + SDR radio (RTL-SDR + dump1090 + rtl_fm) ─────────────────────────
+# Two RTL-SDR dongles required: device 0 = ADS-B (dump1090), device 1 = radio tuner.
+# rtl_fm is part of the librtlsdr package (no separate package needed).
+# aplay (for rtl_fm audio output) comes from alsa-utils.
+BR2_PACKAGE_LIBUSB=y
+BR2_PACKAGE_LIBRTLSDR=y
+BR2_PACKAGE_DUMP1090=y
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+
+# ─── GPS ──────────────────────────────────────────────────────────────────────
+BR2_PACKAGE_GPSD=y
+BR2_PACKAGE_GPSD_DEVICES="/dev/ttyACM0"
+BR2_PACKAGE_GPSD_USER=y
+BR2_PACKAGE_GPSD_USER_VALUE="root"
+BR2_PACKAGE_GPSD_GROUP=y
+BR2_PACKAGE_GPSD_GROUP_VALUE="root"
+BR2_PACKAGE_GPSD_PYTHON=y
+BR2_PACKAGE_GPSD_UBX=y
+
+# ─── Python 3 (Phase 11: DroneAware BLE/WiFi feeders) ────────────────────────
+BR2_PACKAGE_PYTHON3=y
+
+# ─── Bluetooth ────────────────────────────────────────────────────────────────
+# BCM43xx firmware (onboard RPi4 WiFi+BT chip).
+# HID plugin: Classic BT keyboards. HOG plugin: BT LE keyboards (auto-selected).
+BR2_PACKAGE_LINUX_FIRMWARE_BRCM_BCM43XXX=y
+BR2_PACKAGE_RPI4_WIFI_FIRMWARE=y
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
+BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HOG=y
+
+# ─── Networking ───────────────────────────────────────────────────────────────
+BR2_PACKAGE_LINUX_FIRMWARE=y
+BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT2XX=y
+BR2_PACKAGE_WPA_SUPPLICANT=y
+BR2_PACKAGE_WPA_SUPPLICANT_CLI=y
+BR2_PACKAGE_WPA_SUPPLICANT_WPA_CLIENT_SO=y
+BR2_PACKAGE_WPA_SUPPLICANT_PASSPHRASE=y
+BR2_PACKAGE_IPROUTE2=y
+BR2_PACKAGE_IW=y
+BR2_PACKAGE_OPENSSH=y
+BR2_PACKAGE_SYSTEMD_NETWORKD=y
+BR2_PACKAGE_SYSTEMD_RESOLVED=y
+BR2_PACKAGE_SYSTEMD_TIMESYNCD=y
+
+# ─── Graphics: Mesa + KMS/DRM (VideoCore V3D for RPi4) ────────────────────────
+# VC4 driver handles the display pipeline (HDMI/CRTC); V3D handles 3D/EGL.
+# GBM is required by Qt5's eglfs_kms backend.
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_LIBDRM_VC4=y
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VC4=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_V3D=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+BR2_PACKAGE_MESA3D_GBM=y
+
+# ─── Qt5 — eglfs_kms + V3D OpenGL compositor software rotation ───────────────
+# Rotation is handled by QT_QPA_EGLFS_ROTATION=90 in qt_env.sh, which drives
+# QOpenGLCompositor::setRotation() during V3D GL compositing — pure software,
+# no DRM plane rotation. KMS JSON "rotation" field is NOT used: VC4 primary
+# plane rejects 90/270° for cross-device V3D→VC4 DMA-BUF imports.
+BR2_PACKAGE_QT5=y
+BR2_PACKAGE_QT5BASE_DEFAULT_QPA="eglfs"
+BR2_PACKAGE_QT5BASE_GUI=y
+BR2_PACKAGE_QT5BASE_WIDGETS=y
+BR2_PACKAGE_QT5BASE_NETWORK=y
+BR2_PACKAGE_QT5BASE_FONTCONFIG=y
+BR2_PACKAGE_QT5BASE_GIF=y
+BR2_PACKAGE_QT5BASE_JPEG=y
+BR2_PACKAGE_QT5BASE_PNG=y
+BR2_PACKAGE_QT5BASE_LINUXFB=y
+BR2_PACKAGE_QT5BASE_EGLFS=y
+BR2_PACKAGE_QT5BASE_OPENGL_ES2=y
+# QtDBus — used by aeroscan-gui to talk to bluetoothd (org.bluez) for in-app
+# keyboard pairing. The dbus daemon itself is already pulled in by bluez5.
+BR2_PACKAGE_QT5BASE_DBUS=y
+BR2_PACKAGE_QT5MULTIMEDIA=y
+BR2_PACKAGE_QT5SVG=y
+BR2_PACKAGE_QT5TOOLS=y
+BR2_PACKAGE_QT5TOOLS_LINGUIST_TOOLS=y
+BR2_PACKAGE_QT5TOOLS_QTDIAG=y
+
+# ─── GStreamer 1.0 ────────────────────────────────────────────────────────────
+BR2_PACKAGE_GSTREAMER1=y
+BR2_PACKAGE_GST1_PLUGINS_BASE=y
+BR2_PACKAGE_GST1_PLUGINS_BASE_INSTALL_TOOLS=y
+BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_OGG=y
+BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOTESTSRC=y
+BR2_PACKAGE_GST1_PLUGINS_GOOD=y
+BR2_PACKAGE_GST1_PLUGINS_GOOD_JPEG=y
+BR2_PACKAGE_GST1_PLUGINS_GOOD_PNG=y
+BR2_PACKAGE_GST1_PLUGINS_BAD=y
+BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_FBDEV=y
+
+# ─── AeroScan GUI application ─────────────────────────────────────────────────
+BR2_PACKAGE_AEROSCAN_GUI=y
+
+# ─── Touch (XPT2046 via ads7846 driver + tslib calibration) ──────────────────
+BR2_PACKAGE_TSLIB=y
+BR2_PACKAGE_QT5BASE_TSLIB=y
+
+# ─── Input testing ────────────────────────────────────────────────────────────
+BR2_PACKAGE_EVTEST=y
+
+# ─── Debug / dev utilities ────────────────────────────────────────────────────
+BR2_PACKAGE_GDB=y
+BR2_PACKAGE_STRACE=y
+BR2_PACKAGE_HTOP=y
+BR2_PACKAGE_NANO=y
+
+# ─── Root filesystem ──────────────────────────────────────────────────────────
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_LABEL="aeroscan-root"
+# Larger than rpi2 to accommodate Mesa (~400 MB extra)
+BR2_TARGET_ROOTFS_EXT2_SIZE="2000M"
+
+# ─── Host tools (needed by post-image.sh) ─────────────────────────────────────
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_MTOOLS=y

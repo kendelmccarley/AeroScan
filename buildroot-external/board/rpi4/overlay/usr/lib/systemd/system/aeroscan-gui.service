@@ -1,0 +1,28 @@
+[Unit]
+Description=AeroScan GUI
+After=sysinit.target
+
+[Service]
+Type=simple
+User=root
+Environment=QT_FONT_DPI=84
+Environment=QT_QPA_PLATFORM=eglfs
+# Static defaults for the Waveshare HDMI panel (480x800 portrait: render
+# rotated 90° — EGLFS_ROTATION only rotates rendering, never input).
+# Touch (XPT2046): panel axes are swapped AND both inverted vs the landscape
+# view; inversions are applied before rotation on normalized evdevtouch
+# coords, hence rotate=270:invertx:inverty (verified empirically 2026-07-03).
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/etc/qt-kms.json
+Environment=QT_QPA_EGLFS_ROTATION=90
+Environment=QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/touchscreen0:rotate=270:invertx:inverty
+# aeroscan-display-init picks the attached display (DSI preferred) and writes
+# display.env; values from EnvironmentFile override the static defaults above.
+ExecStartPre=/usr/sbin/aeroscan-display-init
+EnvironmentFile=-/run/aeroscan/display.env
+ExecStart=/usr/bin/aeroscan-gui
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,542 @@
+#!/bin/sh
+# aeroscan-setup — first-run configuration for AeroScan
+#
+# Run as root on the serial console or over SSH before the first start
+# of the AeroScan GUI. Configures WiFi, display type, and hostname, then
+# writes the results to the appropriate config files and optionally reboots.
+#
+# Supports: Raspberry Pi 2 (ARMv7, linuxfb) and Raspberry Pi 4 (AArch64, eglfs/KMS)
+
+set -e
+
+BOOT_PART="/dev/mmcblk0p1"
+BOOT_MNT="/mnt/boot"
+WPA_CONF="/etc/wpa_supplicant/wpa_supplicant-wlan0.conf"
+KMS_CONF="/etc/qt-kms.json"
+
+# OpenAIP key is baked in at build time by post-build.sh; if absent, fall back
+# to a keyless URL for the connectivity probe (tile download will still refuse).
+OPENAIP_KEY="$(cat /etc/aeroscan/openaip.key 2>/dev/null || true)"
+if [ -n "$OPENAIP_KEY" ]; then
+    NET_PROBE_URL="https://api.tiles.openaip.net/api/data/openaip/7/21/47.png?apiKey=${OPENAIP_KEY}"
+else
+    NET_PROBE_URL="https://www.openaip.net/"
+fi
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+die() {
+    printf '\nERROR: %s\n' "$1" >&2
+    exit 1
+}
+
+print_section() {
+    printf '\n── %s\n' "$1"
+}
+
+prompt() {
+    # prompt <varname> <text> [default]
+    local _var="$1" _text="$2" _default="$3"
+    if [ -n "$_default" ]; then
+        printf '%s [%s]: ' "$_text" "$_default"
+    else
+        printf '%s: ' "$_text"
+    fi
+    read -r _val
+    [ -z "$_val" ] && _val="$_default"
+    eval "${_var}=\${_val}"
+}
+
+prompt_secret() {
+    # prompt_secret <varname> <text>  — input is hidden
+    local _var="$1" _text="$2" _val
+    printf '%s: ' "$_text"
+    stty -echo 2>/dev/null || true
+    read -r _val
+    stty echo 2>/dev/null || true
+    printf '\n'
+    eval "${_var}=\${_val}"
+}
+
+confirm() {
+    printf '%s [y/N]: ' "$1"
+    read -r _ans
+    case "$_ans" in y|Y|yes|YES) return 0 ;; esac
+    return 1
+}
+
+# ─── Board detection ──────────────────────────────────────────────────────────
+
+detect_board() {
+    MODEL=$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0' || printf 'unknown')
+    case "$MODEL" in
+        *"Pi 4"*) BOARD="rpi4" ;;
+        *"Pi 2"*) BOARD="rpi2" ;;
+        *)        BOARD="unknown" ;;
+    esac
+}
+
+# ─── Boot partition ───────────────────────────────────────────────────────────
+
+mount_boot() {
+    if ! mount | grep -q "$BOOT_MNT"; then
+        mkdir -p "$BOOT_MNT"
+        mount "$BOOT_PART" "$BOOT_MNT" \
+            || die "Cannot mount boot partition ($BOOT_PART). Is the SD card intact?"
+        BOOT_MOUNTED_BY_SCRIPT=1
+    fi
+}
+
+unmount_boot() {
+    if [ "${BOOT_MOUNTED_BY_SCRIPT:-0}" = "1" ]; then
+        umount "$BOOT_MNT" 2>/dev/null || true
+    fi
+}
+BOOT_MOUNTED_BY_SCRIPT=0
+
+# ─── WiFi ─────────────────────────────────────────────────────────────────────
+
+setup_wifi() {
+    print_section "WiFi"
+    prompt SSID "Network name (SSID)" ""
+
+    if [ -z "$SSID" ]; then
+        printf 'Skipping — no SSID entered. Edit %s manually to add a network.\n' "$WPA_CONF"
+        return
+    fi
+
+    prompt_secret PSK "Password (WPA2)"
+
+    if [ -z "$PSK" ]; then
+        die "Password cannot be empty."
+    fi
+
+    # wpa_passphrase hashes the PSK and avoids special-character quoting issues.
+    # The header block (ctrl_interface, country, etc.) is prepended manually.
+    {
+        printf 'ctrl_interface=/var/run/wpa_supplicant\n'
+        printf 'ctrl_interface_group=0\n'
+        printf 'update_config=1\n'
+        printf 'country=US\n\n'
+        wpa_passphrase "$SSID" "$PSK"
+    } > "$WPA_CONF"
+
+    printf 'WiFi config written to %s\n' "$WPA_CONF"
+    WIFI_CONFIGURED=1
+}
+
+# ─── WiFi reconnect (after writing new creds) ─────────────────────────────────
+
+WIFI_CONFIGURED=0
+
+connect_wifi() {
+    [ "$WIFI_CONFIGURED" = "1" ] || return 0
+
+    print_section "Connecting to WiFi"
+    printf 'Restarting wpa_supplicant...\n'
+    systemctl restart "wpa_supplicant@wlan0.service" 2>/dev/null || true
+
+    printf 'Waiting for network'
+    i=0
+    while [ $i -lt 20 ]; do
+        if wget -q --timeout=4 -O /dev/null \
+                "$NET_PROBE_URL" \
+                2>/dev/null; then
+            NETWORK_UP=1
+            printf ' connected.\n'
+            return 0
+        fi
+        printf '.'
+        sleep 2
+        i=$((i + 1))
+    done
+    printf ' timed out.\n'
+    printf 'Network not available. Map tiles can be downloaded later by re-running:\n'
+    printf '  aeroscan-setup  (or)  aeroscan-fetch-tiles\n'
+    NETWORK_UP=0
+}
+
+NETWORK_UP=0
+
+# ─── Display helpers ──────────────────────────────────────────────────────────
+
+# Common preamble for every RPi4 config.txt produced by this script
+rpi4_config_preamble() {
+    printf '# AeroScan RPi 4 — boot configuration\n'
+    printf '# Written by aeroscan-setup on %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+    printf 'arm_64bit=1\n'
+    printf 'start_file=start4.elf\n'
+    printf 'fixup_file=fixup4.dat\n'
+    printf 'kernel=Image\n\n'
+    printf 'enable_uart=1\n'
+    printf 'dtparam=krnbt=on\n\n'
+    printf '# KMS/DRM — required for eglfs (Mesa V3D)\n'
+    printf 'dtoverlay=vc4-kms-v3d\n\n'
+    printf 'gpu_mem=64\n\n'
+}
+
+rpi4_spi_touch_block() {
+    printf '# SPI + XPT2046 resistive touch (Waveshare SPI touch panels)\n'
+    printf 'dtparam=spi=on\n'
+    printf 'dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,'
+    printf 'keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900\n'
+}
+
+write_kms_json() {
+    # write_kms_json <output_name> <rotation_degrees>
+    # Omit width/height — KMS uses the panel's native mode from the DT/EDID.
+    cat > "$KMS_CONF" <<EOF
+{
+  "device": "/dev/dri/card0",
+  "outputs": [
+    {
+      "name": "$1",
+      "rotation": $2
+    }
+  ]
+}
+EOF
+    printf 'KMS config written to %s (output: %s, rotation: %s°)\n' \
+        "$KMS_CONF" "$1" "$2"
+}
+
+# ─── Display setup — RPi 4 ────────────────────────────────────────────────────
+
+setup_display_rpi4() {
+    print_section "Display type (RPi 4)"
+    printf '  1) HDMI — Waveshare 4" 800×480 (default build target)\n'
+    printf '  2) DSI  — Official Raspberry Pi 7" touchscreen (800×480)\n'
+    printf '  3) DSI  — Waveshare DSI panel (specify overlay)\n'
+    printf '  4) Keep existing config.txt / qt-kms.json unchanged\n'
+    prompt DISP_CHOICE "Choice" "1"
+
+    case "$DISP_CHOICE" in
+
+    1)  # HDMI Waveshare 480×800 portrait panel, firmware drives it in portrait,
+        # KMS JSON rotates Qt5 output 270° → app sees 800×480 landscape.
+        {
+            rpi4_config_preamble
+            printf '# Display — Waveshare 4" HDMI LCD\n'
+            printf '# Panel is 480×800 portrait; KMS JSON rotates Qt5 output 270°\n'
+            printf '# so the application coordinate space is 800×480 landscape.\n'
+            printf 'hdmi_force_hotplug=1\n'
+            printf 'hdmi_drive=1\n'
+            printf 'disable_overscan=1\n'
+            printf 'hdmi_group=2\n'
+            printf 'hdmi_mode=87\n'
+            printf 'hdmi_cvt=480 800 60 6 0 0 0\n\n'
+            rpi4_spi_touch_block
+        } > "$BOOT_MNT/config.txt"
+        write_kms_json "HDMI-A-1" "270"
+        printf 'Display: HDMI Waveshare 800×480\n'
+        ;;
+
+    2)  # Official RPi 7" DSI (800×480, landscape, integrated touch via I2C)
+        {
+            rpi4_config_preamble
+            printf '# Display — Official Raspberry Pi 7" DSI touchscreen\n'
+            printf 'dtoverlay=vc4-kms-dsi-7inch\n\n'
+            printf '# NOTE: the RPi 7" touch controller (Goodix/FT5x06) is on I2C,\n'
+            printf '#       not SPI. The ads7846 overlay below is commented out.\n'
+            printf '# dtparam=spi=on\n'
+            printf '# dtoverlay=ads7846,...\n'
+        } > "$BOOT_MNT/config.txt"
+        write_kms_json "DSI-1" "0"
+        printf 'Display: DSI Official RPi 7"\n'
+        printf 'Touch:   I2C controller on the panel (no ts_calibrate needed).\n'
+        ;;
+
+    3)  # Waveshare DSI or other custom DSI panel
+        printf '\n  Common Waveshare DSI overlays:\n'
+        printf '    vc4-kms-dsi-waveshare-panel,2_8_inch   (480×640)\n'
+        printf '    vc4-kms-dsi-waveshare-panel,3_4_inch   (800×800)\n'
+        printf '    vc4-kms-dsi-waveshare-panel,4_0_inch   (480×800)\n'
+        printf '    vc4-kms-dsi-waveshare-panel,7_0_inch_c (1024×600)\n'
+        printf '    (see /boot/overlays/README for the full list)\n\n'
+        prompt DSI_OVERLAY "dtoverlay value" ""
+        [ -z "$DSI_OVERLAY" ] && die "No overlay entered."
+        prompt DSI_ROTATION "Qt5 rotation in degrees (0/90/180/270)" "0"
+        prompt DSI_HAS_SPI_TOUCH "Does this panel use SPI XPT2046 touch? (y/n)" "n"
+        {
+            rpi4_config_preamble
+            printf '# Display — custom DSI panel\n'
+            printf 'dtoverlay=%s\n\n' "$DSI_OVERLAY"
+            case "$DSI_HAS_SPI_TOUCH" in y|Y)
+                rpi4_spi_touch_block ;;
+            esac
+        } > "$BOOT_MNT/config.txt"
+        write_kms_json "DSI-1" "$DSI_ROTATION"
+        printf 'Display: DSI %s\n' "$DSI_OVERLAY"
+        ;;
+
+    4)
+        printf 'Display config unchanged.\n'
+        ;;
+
+    *)
+        printf 'Invalid choice; display config unchanged.\n'
+        ;;
+    esac
+}
+
+# ─── Display setup — RPi 2 ────────────────────────────────────────────────────
+
+setup_display_rpi2() {
+    print_section "Display type (RPi 2)"
+    printf '  1) HDMI — Waveshare 4" 800×480 (default build target)\n'
+    printf '  2) DSI  — Official Raspberry Pi 7" touchscreen (800×480)\n'
+    printf '  3) Keep existing config.txt unchanged\n'
+    prompt DISP_CHOICE "Choice" "1"
+
+    case "$DISP_CHOICE" in
+
+    1)
+        cat > "$BOOT_MNT/config.txt" <<'CFGEOF'
+# AeroScan RPi 2 — boot configuration
+# Written by aeroscan-setup
+
+enable_uart=1
+kernel=zImage
+
+# Waveshare 4" HDMI LCD (480×800 portrait, display_rotate=3 → 800×480 landscape)
+hdmi_force_hotplug=1
+hdmi_drive=1
+disable_overscan=1
+hdmi_group=2
+hdmi_mode=87
+hdmi_cvt=480 800 60 6 0 0 0
+display_rotate=3
+
+gpu_mem=64
+
+dtparam=spi=on
+dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900
+CFGEOF
+        printf 'Display: HDMI Waveshare 800×480\n'
+        ;;
+
+    2)  # Official RPi 7" DSI — firmware drives it, rpi-ft5406 for touch
+        cat > "$BOOT_MNT/config.txt" <<'CFGEOF'
+# AeroScan RPi 2 — boot configuration
+# Written by aeroscan-setup
+
+enable_uart=1
+kernel=zImage
+gpu_mem=64
+
+# Official Raspberry Pi 7" DSI touchscreen
+dtoverlay=rpi-ft5406
+CFGEOF
+        printf 'Display: DSI Official RPi 7"\n'
+        printf 'Touch:   rpi-ft5406 overlay (no ts_calibrate needed).\n'
+        ;;
+
+    3)
+        printf 'Display config unchanged.\n'
+        ;;
+
+    *)
+        printf 'Invalid choice; display config unchanged.\n'
+        ;;
+    esac
+}
+
+# ─── Map tiles ────────────────────────────────────────────────────────────────
+
+setup_map_tiles() {
+    print_section "Map tiles (OpenAIP aviation data)"
+
+    TILE_DIR="/opt/winglet-gui/maps"
+    STAMP="$TILE_DIR/.downloaded"
+
+    # Show current state
+    if [ -f "$STAMP" ]; then
+        TILE_DATE=$(grep '^' "$STAMP" | head -1 | tr -d '\n')
+        TILE_COUNT=$(find "$TILE_DIR" -name '*.png' 2>/dev/null | wc -l)
+        printf 'Current : %d tiles, last updated %s\n' "$TILE_COUNT" "$TILE_DATE"
+        ACTION_LABEL="Update tiles (skip existing, download any missing)"
+    elif [ -d "$TILE_DIR" ] && [ "$(find "$TILE_DIR" -name '*.png' 2>/dev/null | wc -l)" -gt 0 ]; then
+        TILE_COUNT=$(find "$TILE_DIR" -name '*.png' 2>/dev/null | wc -l)
+        printf 'Current : %d tiles (no download timestamp)\n' "$TILE_COUNT"
+        ACTION_LABEL="Update tiles (skip existing, download any missing)"
+    else
+        printf 'Current : no tiles\n'
+        ACTION_LABEL="Download CONUS tiles (zoom 7–10, ~1 300 tiles, ~15 MB)"
+    fi
+
+    # Check / establish network
+    if [ "$NETWORK_UP" = "0" ]; then
+        printf 'Checking network connectivity...\n'
+        if wget -q --timeout=6 -O /dev/null \
+                "$NET_PROBE_URL" \
+                2>/dev/null; then
+            NETWORK_UP=1
+        fi
+    fi
+
+    if [ "$NETWORK_UP" = "0" ]; then
+        printf 'No network — skipping tile download.\n'
+        printf 'Once online, run:  aeroscan-fetch-tiles\n'
+        return
+    fi
+
+    confirm "$ACTION_LABEL?" || return
+
+    printf '\n  1) CONUS (default — lat 24–49.5, lon -125–-66, zoom 7–10)\n'
+    printf '  2) Custom region / zoom\n'
+    prompt TILE_CHOICE "Choice" "1"
+
+    case "$TILE_CHOICE" in
+    1)
+        aeroscan-fetch-tiles --out "$TILE_DIR"
+        ;;
+    2)
+        printf '\nEnter bounding box as four numbers: LAT_MIN LON_MIN LAT_MAX LON_MAX\n'
+        printf 'Example (Pacific SW):  24 -125 36 -110\n'
+        prompt TILE_BBOX "Bounding box" "24.0 -125.0 49.5 -66.0"
+        prompt TILE_ZOOMS "Zoom range (MIN-MAX)" "7-10"
+        # shellcheck disable=SC2086
+        aeroscan-fetch-tiles --out "$TILE_DIR" --bbox $TILE_BBOX --zooms "$TILE_ZOOMS"
+        ;;
+    *)
+        printf 'Invalid choice; skipping tile download.\n'
+        ;;
+    esac
+}
+
+# ─── Hostname ─────────────────────────────────────────────────────────────────
+
+setup_hostname() {
+    print_section "Hostname"
+    CURRENT=$(cat /etc/hostname 2>/dev/null | tr -d '[:space:]' || printf 'aeroscan')
+    prompt NEW_HOSTNAME "Hostname" "$CURRENT"
+
+    if [ "$NEW_HOSTNAME" != "$CURRENT" ]; then
+        printf '%s\n' "$NEW_HOSTNAME" > /etc/hostname
+        sed -i "s/\b${CURRENT}\b/${NEW_HOSTNAME}/g" /etc/hosts 2>/dev/null || true
+        printf 'Hostname: %s → %s\n' "$CURRENT" "$NEW_HOSTNAME"
+    else
+        printf 'Hostname unchanged (%s)\n' "$CURRENT"
+    fi
+}
+
+# ─── Bluetooth keyboard ───────────────────────────────────────────────────────
+
+setup_bluetooth() {
+    [ "$BOARD" = "rpi4" ] || return 0
+
+    print_section "Bluetooth keyboard (RPi 4)"
+
+    if ! systemctl is-active bluetooth.service >/dev/null 2>&1; then
+        printf 'bluetooth.service is not running.\n'
+        printf 'Check that BT firmware installed and krnbt=on is in config.txt.\n'
+        return
+    fi
+
+    # Show already-bonded devices so the user knows if pairing is needed.
+    BONDED=$(bluetoothctl devices Paired 2>/dev/null || bluetoothctl devices 2>/dev/null)
+    if [ -n "$BONDED" ]; then
+        printf 'Already paired devices:\n%s\n' "$BONDED"
+    else
+        printf 'No paired devices found.\n'
+    fi
+
+    confirm "Pair a Bluetooth keyboard now?" || return
+
+    # ── Scan ──────────────────────────────────────────────────────────────────
+
+    printf '\nPut your keyboard into pairing mode (usually hold a button\n'
+    printf 'until the LED blinks rapidly), then press Enter here.\n'
+    read -r _dummy
+
+    printf 'power on\n' | bluetoothctl >/dev/null 2>&1 || true
+
+    # Start scan in the daemon; individual bluetoothctl calls share daemon state.
+    printf 'scan on\n' | bluetoothctl >/dev/null 2>&1 || true
+
+    printf 'Scanning'
+    _i=0
+    while [ $_i -lt 15 ]; do
+        sleep 1
+        printf '.'
+        _i=$((_i + 1))
+    done
+    printf '\n'
+
+    printf 'scan off\n' | bluetoothctl >/dev/null 2>&1 || true
+
+    printf '\nDiscovered Bluetooth devices:\n'
+    bluetoothctl devices 2>/dev/null || printf '  (none)\n'
+
+    # ── Pair ──────────────────────────────────────────────────────────────────
+
+    printf '\nEnter the keyboard MAC address from the list above\n'
+    printf '(format AA:BB:CC:DD:EE:FF, blank to skip): '
+    read -r BT_MAC
+    [ -z "$BT_MAC" ] && return
+
+    printf '\nPairing with %s...\n' "$BT_MAC"
+    printf 'Most keyboards use "Just Works" pairing — no PIN needed.\n'
+    printf 'If a 6-digit code appears on screen, type it on the BT keyboard.\n\n'
+
+    # Run pair/trust/connect in a single bluetoothctl session so the built-in
+    # agent can handle any passkey display or confirmation prompt.
+    {
+        printf 'agent on\n'
+        printf 'default-agent\n'
+        printf 'pair %s\n' "$BT_MAC"
+        printf 'trust %s\n' "$BT_MAC"
+        printf 'connect %s\n' "$BT_MAC"
+        printf 'quit\n'
+    } | bluetoothctl
+
+    printf '\nKeyboard bonded. BlueZ will reconnect it automatically on boot.\n'
+    printf 'To manage BT devices later:  bluetoothctl\n'
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+[ "$(id -u)" = "0" ] || die "Must run as root (try: sudo aeroscan-setup)"
+
+printf '\n'
+printf '╔════════════════════════════════════════╗\n'
+printf '║      AeroScan First-Run Setup          ║\n'
+printf '╚════════════════════════════════════════╝\n'
+
+detect_board
+printf '\nBoard : %s\n' "$MODEL"
+
+if [ "$BOARD" = "unknown" ]; then
+    printf 'WARNING: Board not recognized; display options may not match.\n'
+fi
+
+mount_boot
+
+setup_wifi
+connect_wifi   # no-op if WiFi creds were not changed; tries to bring up wlan0 if they were
+
+case "$BOARD" in
+    rpi4) setup_display_rpi4 ;;
+    rpi2) setup_display_rpi2 ;;
+    *)
+        print_section "Display"
+        printf 'Unknown board — skipping display configuration.\n'
+        printf 'Edit %s/config.txt manually.\n' "$BOOT_MNT"
+        ;;
+esac
+
+setup_map_tiles
+
+setup_hostname
+
+setup_bluetooth
+
+sync
+unmount_boot
+
+printf '\n── Setup complete ─────────────────────────────────────────────\n'
+if confirm 'Reboot now to apply changes?'; then
+    reboot
+else
+    printf 'Reboot when ready:  reboot\n'
+fi

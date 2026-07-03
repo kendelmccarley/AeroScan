@@ -1,0 +1,39 @@
+AeroScan — theme.cpp patch: swap the background brand watermark from the Aerospace Village
+globe to the Parhelia sundog mark.
+
+FILE: aeroscan-gui/winglet-ui/theme.cpp
+FUNCTION: WingletTheme::setColorModePalette(bool darkMode)
+
+Near the end of that function there is one line that loads the watermark and tints it to the
+near-black Shadow color. Replace it.
+
+--------------------------------------------------------------------------------
+UNIFIED DIFF
+--------------------------------------------------------------------------------
+@@ WingletTheme::setColorModePalette @@
+-    loadMonochromeIcon(&avLogo, ":/images/av_logo.png", QPalette::Shadow);
++    // Parhelia sundog watermark — pre-colored amber, pre-dimmed; load directly (no tint)
++    // so it reads the same in both dark and light mode.
++    avLogo.load(":/images/parhelia_watermark.png");
+--------------------------------------------------------------------------------
+
+That is the whole required change. `avLogo` is the QPixmap already declared in theme.h and
+drawn by renderBgAvLogo(); nothing else needs to change — the label auto-sizes to the new
+pixmap (194x256) and stays centered at (300, 245).
+
+================================================================================
+OPTIONAL VARIANTS
+================================================================================
+
+A) Keep the original tinted pipeline (subtle near-black watermark, Parhelia shape):
+   Use the FULL-opacity mark and keep the tint call:
+-    loadMonochromeIcon(&avLogo, ":/images/av_logo.png", QPalette::Shadow);
++    loadMonochromeIcon(&avLogo, ":/images/parhelia_mark.png", QPalette::Shadow);
+
+B) Brighter amber watermark (tint full-opacity mark to brand amber instead of pre-dimmed):
+-    loadMonochromeIcon(&avLogo, ":/images/av_logo.png", QPalette::Shadow);
++    loadColoredIcon(&avLogo, ":/images/parhelia_mark.png", QColor("#f8af1c"));
+   (loadColoredIcon already exists in theme.cpp. Tune brightness by lowering the label's
+    opacity in renderBgAvLogo via a QGraphicsOpacityEffect if it's too strong.)
+
+The recommended one-line patch at the top uses parhelia_watermark.png and needs no tint code.

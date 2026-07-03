@@ -1,0 +1,9 @@
+{
+  "device": "/dev/dri/card1",
+  "separateEglDevice": true,
+  "outputs": [
+    {
+      "name": "HDMI-A-1"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Disable BCM4345C0 UART deep sleep (LPM)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/aeroscan-bt-init
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=bluetooth.service

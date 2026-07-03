@@ -1,0 +1,6 @@
+# KMS/DRM for RPi4: VC4 handles display pipeline (HDMI/CRTC), V3D handles EGL.
+# bcm2711_defconfig has these as modules; promote to built-in for reliable boot.
+CONFIG_DRM=y
+CONFIG_DRM_VC4=y
+CONFIG_DRM_V3D=y
+CONFIG_DRM_FBDEV_EMULATION=y

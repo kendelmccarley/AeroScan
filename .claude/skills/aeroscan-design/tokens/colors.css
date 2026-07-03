@@ -1,0 +1,82 @@
+/* AeroScan — Color system
+   Two layers:
+   1. Parhelia Technology brand (navy + cyan, globe mark) — sampled from the official logo.
+   2. The AeroScan instrument theme — the dark radar-scope palette the device actually
+      renders in, lifted verbatim from winglet-ui/theme.cpp (QPalette roles + scope colors).
+   The device ships a dark mode (default) and a light mode; tokens below are the dark
+   instrument theme. Light-mode equivalents are kept as --*-light for reference.
+*/
+
+:root {
+  /* ---- Parhelia Technology brand ---- */
+  /* Sampled from the official logo: a "parhelion" (sundog) — amber sun-arc + spark over a
+     graphite serif wordmark. The brand amber is the same hero amber the instrument runs on. */
+  --brand-amber: #f8af1c;       /* logo sun-arc, spark, "TECHNOLOGY" */
+  --brand-amber-deep: #e0920a;
+  --brand-graphite: #414143;    /* "PARHELIA" wordmark */
+  --brand-graphite-soft: #5a5a5d;
+  --brand-paper: #e9e6df;       /* wordmark relit for dark surfaces */
+
+  /* Secondary accent (legacy Aerospace Village globe — still used for ADS-B / data chrome) */
+  --av-navy: #1f1f60;        /* globe body */
+  --av-navy-deep: #16163f;
+  --av-cyan: #00b0f0;        /* orbit arrow / brand accent */
+  --av-cyan-bright: #29c5ff;
+  --av-white: #ffffff;
+
+  /* ---- Instrument base surfaces (QPalette) ---- */
+  --bg: #111111;             /* Window — primary screen background */
+  --bg-shadow: #000000;      /* Shadow — true black, bezel & vignette */
+  --surface: #36454f;        /* Base / Midlight — charcoal slate panels, table headers */
+  --surface-raised: #45565f;
+
+  /* ---- Instrument text & accents (QPalette) ---- */
+  --text-amber: #ffac11;     /* Text — screen titles, primary readouts */
+  --text-amber-dim: #cc8808; /* light-mode Text / pressed amber */
+  --text-teal: #0a7985;      /* HighlightedText — selected items, buttons, captions */
+  --text-teal-deep: #036570;
+  --text-muted: #999999;     /* WindowText — body copy, secondary data */
+  --link-magenta: #db1675;   /* Link — active selection / committed action */
+  --link-magenta-deep: #ba075e;
+
+  /* ---- Scope & telemetry signal colors ---- */
+  --radar-green: #39ff14;        /* radar_sweep_lines_color (57,255,20) — sweep & rings */
+  --radar-green-soft: #8bf688;   /* radar_sweep_cursor_color_inv (139,246,136) */
+  --radar-cursor: #dcdcdc;       /* radar_sweep_cursor_color (220,220,220) */
+  --oscope-yellow: #ffff00;      /* oscope_line_color — waveform trace */
+
+  /* ---- Status semantics ---- */
+  --status-ok: #22cc44;      /* GPS locked / charging good */
+  --status-alert: #dd2222;   /* GPS no-lock / disconnected / AlternateBase red */
+  --status-warn: #ffac11;    /* warnings reuse amber */
+
+  /* ---- Air-traffic identity (radarscope.cpp AIRLINE_COLORS) ---- */
+  --air-swa: #ffa500;        /* Southwest — orange */
+  --air-dal: #0000ff;        /* Delta — blue */
+  --air-ual: #0000ff;        /* United — blue */
+  --air-aal: #ff0000;        /* American — red */
+  --air-ups: #8b4513;        /* UPS — brown */
+  --air-fdx: #a219ff;        /* FedEx — purple */
+  --air-unknown: #999999;    /* no callsign — muted */
+
+  /* ---- Drone identity (Phase 12 radar rendering) ---- */
+  --drone-ble: #ff3b3b;      /* BLE-detected — hollow red diamond */
+  --drone-wifi: #ff9500;     /* WiFi-detected — solid orange diamond */
+
+  /* ---- Semantic aliases (use these in components) ---- */
+  --text-title: var(--text-amber);
+  --text-body: var(--text-muted);
+  --text-selected: var(--text-teal);
+  --text-active: var(--link-magenta);
+  --surface-card: var(--surface);
+  --surface-screen: var(--bg);
+  --border-hairline: rgba(255, 255, 255, 0.14);
+  --border-scope: var(--radar-green);
+
+  /* ---- Light instrument mode (reference only) ---- */
+  --bg-light: #eeeeee;
+  --surface-light: #a9a9a9;
+  --text-amber-light: #cc8808;
+  --text-teal-light: #036570;
+  --radar-green-light: #006400;
+}

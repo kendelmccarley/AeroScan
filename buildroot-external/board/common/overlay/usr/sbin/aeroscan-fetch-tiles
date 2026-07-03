@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""aeroscan-fetch-tiles — download OpenAIP aviation tiles to local storage.
+
+Default region: CONUS (lat 24–49.5, lon -125–-66), zoom 7–10.
+Tiles are stored as {out}/{z}/{x}/{y}.png and can be served by the
+AeroScan map scope or inspected with any XYZ tile viewer.
+
+Resume mode (default): existing tiles are skipped so interrupted downloads
+can be retried without re-downloading everything.
+
+Usage:
+    aeroscan-fetch-tiles                         # CONUS z7-10, resume
+    aeroscan-fetch-tiles --no-resume             # force re-download all
+    aeroscan-fetch-tiles --zooms 7-12            # higher detail
+    aeroscan-fetch-tiles --bbox 32 -118 36 -114  # custom bbox (LA basin)
+    aeroscan-fetch-tiles --out /mnt/sd/maps      # alternate output dir
+"""
+
+import argparse
+import math
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+# ─── Defaults ─────────────────────────────────────────────────────────────────
+
+API_KEY_FILE     = "/etc/aeroscan/openaip.key"   # installed at build time by post-build.sh
+DEFAULT_BBOX     = (24.0, -125.0, 49.5, -66.0)   # lat_min, lon_min, lat_max, lon_max
+DEFAULT_ZOOM_MIN = 7
+DEFAULT_ZOOM_MAX = 10
+DEFAULT_OUT      = "/opt/winglet-gui/maps"
+TILE_URL         = ("https://api.tiles.openaip.net/api/data/openaip"
+                    "/{z}/{x}/{y}.png?apiKey={key}")
+STAMP_FILE       = ".downloaded"
+
+# Polite delay between HTTP requests to avoid hitting OpenAIP rate limits.
+REQUEST_DELAY_S  = 0.05
+
+
+def _load_key_file():
+    try:
+        with open(API_KEY_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+# ─── Tile math (Web Mercator XYZ) ─────────────────────────────────────────────
+
+def _deg2tile(lat_deg, lon_deg, zoom):
+    lat_rad = math.radians(lat_deg)
+    n = 2 ** zoom
+    x = int((lon_deg + 180.0) / 360.0 * n)
+    y = int((1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n)
+    return x, max(0, min(n - 1, y))
+
+
+def tile_range(lat_min, lon_min, lat_max, lon_max, zoom):
+    """Return (x_range, y_range) for the given bbox at the given zoom.
+
+    Note: larger lat → smaller y (tiles are numbered top-to-bottom).
+    """
+    x_min, y_min = _deg2tile(lat_max, lon_min, zoom)
+    x_max, y_max = _deg2tile(lat_min, lon_max, zoom)
+    return range(x_min, x_max + 1), range(y_min, y_max + 1)
+
+
+def count_tiles(lat_min, lon_min, lat_max, lon_max, zoom_min, zoom_max):
+    total = 0
+    for z in range(zoom_min, zoom_max + 1):
+        xs, ys = tile_range(lat_min, lon_min, lat_max, lon_max, z)
+        total += len(xs) * len(ys)
+    return total
+
+
+# ─── Download ─────────────────────────────────────────────────────────────────
+
+def download_tile(z, x, y, api_key, out_dir, resume):
+    path = os.path.join(out_dir, str(z), str(x), str(y) + ".png")
+    if resume and os.path.exists(path):
+        return "skip"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    url = TILE_URL.format(z=z, x=x, y=y, key=api_key)
+    for attempt in range(3):
+        try:
+            urllib.request.urlretrieve(url, path + ".tmp")
+            os.replace(path + ".tmp", path)
+            return "ok"
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return "404"      # tile outside coverage — not an error
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        except Exception:
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        finally:
+            try:
+                os.unlink(path + ".tmp")
+            except OSError:
+                pass
+    return "err"
+
+
+# ─── Progress display ─────────────────────────────────────────────────────────
+
+def _progress(current, total, zoom, downloaded, skipped, errors):
+    pct = current * 100 // total if total else 0
+    sys.stdout.write(
+        "\r  z=%-2d  %4d/%d (%d%%)  — %d new  %d skipped  %d errors" % (
+            zoom, current, total, pct, downloaded, skipped, errors)
+    )
+    sys.stdout.flush()
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Download OpenAIP aviation tiles for AeroScan map scope.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    p.add_argument("--key",  default=_load_key_file(),
+                   help="OpenAIP API key (default: read from %s)" % API_KEY_FILE)
+    p.add_argument("--bbox", nargs=4, type=float,
+                   metavar=("LAT_MIN", "LON_MIN", "LAT_MAX", "LON_MAX"),
+                   default=list(DEFAULT_BBOX),
+                   help="Bounding box in decimal degrees (default: CONUS)")
+    p.add_argument("--zooms", default="%d-%d" % (DEFAULT_ZOOM_MIN, DEFAULT_ZOOM_MAX),
+                   metavar="MIN-MAX",
+                   help="Zoom range, e.g. 7-10 (default: %(default)s)")
+    p.add_argument("--out", default=DEFAULT_OUT,
+                   help="Output directory (default: %(default)s)")
+    p.add_argument("--no-resume", action="store_true",
+                   help="Re-download tiles that already exist on disk")
+    return p.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if not args.key:
+        sys.exit("ERROR: no OpenAIP API key — %s is missing and --key was not "
+                 "given (free key: https://www.openaip.net)" % API_KEY_FILE)
+
+    if "-" in args.zooms:
+        parts = args.zooms.split("-", 1)
+        z_min, z_max = int(parts[0]), int(parts[1])
+    else:
+        z_min = z_max = int(args.zooms)
+
+    lat_min, lon_min, lat_max, lon_max = args.bbox
+    resume = not args.no_resume
+
+    total = count_tiles(lat_min, lon_min, lat_max, lon_max, z_min, z_max)
+    existing = sum(
+        1 for root, _, files in os.walk(args.out)
+        for f in files if f.endswith(".png")
+    ) if os.path.isdir(args.out) else 0
+
+    print("Output    : %s" % args.out)
+    print("Region    : lat %.1f–%.1f  lon %.1f–%.1f" % (
+        lat_min, lat_max, lon_min, lon_max))
+    print("Zoom      : %d–%d" % (z_min, z_max))
+    print("Total     : %d tiles to check  (%d currently on disk)" % (total, existing))
+    print("Resume    : %s" % ("yes — skipping existing tiles" if resume
+                               else "no — re-downloading everything"))
+    print()
+
+    downloaded = skipped = errors = n = 0
+
+    for z in range(z_min, z_max + 1):
+        xs, ys = tile_range(lat_min, lon_min, lat_max, lon_max, z)
+        for x in xs:
+            for y in ys:
+                result = download_tile(z, x, y, args.key, args.out, resume)
+                if   result == "ok":   downloaded += 1
+                elif result == "skip": skipped    += 1
+                elif result == "404":  skipped    += 1   # outside coverage
+                else:                  errors     += 1
+                n += 1
+                _progress(n, total, z, downloaded, skipped, errors)
+                if result == "ok":
+                    time.sleep(REQUEST_DELAY_S)
+
+    print()
+    print()
+    print("Done: %d new,  %d skipped,  %d errors" % (downloaded, skipped, errors))
+
+    if errors:
+        print("Some tiles failed. Re-run (resume mode will retry only failures).")
+        sys.exit(1)
+
+    # Write a timestamp so setup/the app can show when tiles were last updated.
+    stamp_path = os.path.join(args.out, STAMP_FILE)
+    with open(stamp_path, "w") as f:
+        f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+        f.write("tiles=%d\n" % (downloaded + skipped))
+        f.write("bbox=%.1f,%.1f,%.1f,%.1f\n" % (lat_min, lon_min, lat_max, lon_max))
+        f.write("zooms=%d-%d\n" % (z_min, z_max))
+
+
+if __name__ == "__main__":
+    main()
