@@ -25,5 +25,5 @@ echo "────────────────────────�
 echo "  SD card image ready: ${BINARIES_DIR}/sdcard.img"
 echo ""
 echo "  Flash command (replace sdX with your card device):"
-echo "  sudo dd if=${BINARIES_DIR}/sdcard.img of=/dev/sdX bs=4M status=progress"
+echo "  sudo dd if=${BINARIES_DIR}/sdcard.img of=/dev/sdX bs=4M oflag=direct conv=fsync status=progress"
 echo "─────────────────────────────────────────────────────────"
