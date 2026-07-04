@@ -88,8 +88,10 @@ automatically during the build:
 
 ## First boot
 
-Boot lands on a tty1 shell (the GUI service is preset-disabled on the Pi 4
-image while the port is under active development). Run `aeroscan-setup` on the
+On the first boot the root partition automatically expands to fill the SD
+card (`aeroscan-expand-rootfs.service`, runs once early in boot, takes a few
+seconds). Boot lands on a tty1 shell (the GUI service is preset-disabled on
+the Pi 4 image while the port is under active development). Run `aeroscan-setup` on the
 console or over SSH to configure WiFi, display, and hostname, then start the
 GUI with `systemctl start aeroscan-gui` or run `aeroscan-gui` directly.
 

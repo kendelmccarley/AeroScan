@@ -70,6 +70,10 @@ BR2_PACKAGE_KMOD_TOOLS=y
 BR2_PACKAGE_XZ=y
 BR2_PACKAGE_UTIL_LINUX=y
 BR2_PACKAGE_UTIL_LINUX_BINARIES=y
+BR2_PACKAGE_UTIL_LINUX_PARTX=y
+# resize2fs + partx are needed by aeroscan-expand-rootfs (first-boot expansion)
+BR2_PACKAGE_E2FSPROGS=y
+BR2_PACKAGE_E2FSPROGS_RESIZE2FS=y
 BR2_PACKAGE_LIBERATION=y
 
 # ─── GPIO ─────────────────────────────────────────────────────────────────────

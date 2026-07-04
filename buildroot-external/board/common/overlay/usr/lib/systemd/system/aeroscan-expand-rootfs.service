@@ -1,0 +1,17 @@
+[Unit]
+Description=Expand root partition to fill the SD card (first boot)
+ConditionPathExists=!/etc/aeroscan/.rootfs-expanded
+DefaultDependencies=no
+Conflicts=shutdown.target
+After=systemd-remount-fs.service
+Before=sysinit.target shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/aeroscan-expand-rootfs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=sysinit.target

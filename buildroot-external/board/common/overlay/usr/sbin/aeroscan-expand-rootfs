@@ -1,0 +1,52 @@
+#!/bin/sh
+# Expand the root partition (mmcblk0p2) and its ext4 filesystem to fill the
+# SD card. Runs once on first boot via aeroscan-expand-rootfs.service, then
+# stamps /etc/aeroscan/.rootfs-expanded so it never runs again.
+#
+# The resize is done online (root stays mounted): sfdisk rewrites the MBR
+# entry, partx tells the kernel the new size via BLKPG, and resize2fs grows
+# the mounted filesystem.
+
+set -e
+
+DISK=/dev/mmcblk0
+PART=${DISK}p2
+STAMP=/etc/aeroscan/.rootfs-expanded
+
+if [ -e "$STAMP" ]; then
+    exit 0
+fi
+
+if [ ! -b "$PART" ]; then
+    echo "aeroscan-expand-rootfs: $PART not found — skipping"
+    exit 0
+fi
+
+DISK_SECTORS=$(cat /sys/block/mmcblk0/size)
+PART_START=$(cat /sys/block/mmcblk0/mmcblk0p2/start)
+PART_SIZE=$(cat /sys/block/mmcblk0/mmcblk0p2/size)
+FREE=$((DISK_SECTORS - PART_START - PART_SIZE))
+
+# Nothing worth claiming (< 8 MiB) — stamp and be done.
+if [ "$FREE" -lt 16384 ]; then
+    echo "aeroscan-expand-rootfs: partition already fills the card"
+    mkdir -p "$(dirname "$STAMP")"
+    touch "$STAMP"
+    exit 0
+fi
+
+echo "aeroscan-expand-rootfs: growing $PART by $((FREE / 2048)) MiB"
+
+# Grow partition 2 to the end of the disk. --no-reread because the kernel
+# cannot re-read the table of the disk holding the mounted root.
+echo ",+" | sfdisk --no-reread --force -N 2 "$DISK"
+
+# Tell the kernel the new partition size (BLKPG works while mounted).
+partx --update --nr 2 "$DISK"
+
+# Grow the ext4 filesystem online.
+resize2fs "$PART"
+
+mkdir -p "$(dirname "$STAMP")"
+touch "$STAMP"
+echo "aeroscan-expand-rootfs: done"
