@@ -38,6 +38,7 @@ public:
     void addOpenNetwork(const QString &ssid);
     void addProtectedNetwork(const QString &ssid, const QString &psk);
     void removeNetwork(int networkId);
+    void selectNetwork(int networkId);
     void scanNetworks();
     QList<WifiScanResult> getScanResults();
 
@@ -51,6 +52,7 @@ signals:
     void doAddOpenNetwork(QString ssid, QPrivateSignal);
     void doAddProtectedNetwork(QString ssid, QString psk, QPrivateSignal);
     void doRemoveNetwork(int networkId, QPrivateSignal);
+    void doSelectNetwork(int networkId, QPrivateSignal);
     void doScanNetworks(QPrivateSignal);
     void doRefreshScanResults(QPrivateSignal);
 
@@ -60,6 +62,7 @@ private slots:
     void addOpenNetworkInThread(QString ssid);
     void addProtectedNetworkInThread(QString ssid, QString psk);
     void removeNetworkInThread(int networkId);
+    void selectNetworkInThread(int networkId);
     void scanNetworksInThread();
     void refreshScanResultsInThread();
 
@@ -68,6 +71,7 @@ private:
     bool tryConnectWpa();
     void disconnectWpa();
     bool refreshNetworkList();
+    bool selectAndReenableOthers(int networkId);
     bool issueSimpleRequest(const QString &req);
     bool xferRequest(const char* req, bool ignoreMsgOverflow = false);
     bool decodePropertyString(const char* propertyStr, QMap<QString, QString> *mapOut);

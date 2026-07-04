@@ -128,9 +128,14 @@ void SettingsMenu::showEvent(QShowEvent *event)
             bool manuallyEntered = actionState == SettingsMenu::ACTION_STATE_WIFI_SSID_RETURN;
 
             QMap<int, QString> knownNetworks = WingletGUI::inst->wifiMon->knownNetworks();
-            if (knownNetworks.key(enteredWifiSSID, -1) != -1) {
+            int knownNetworkId = knownNetworks.key(enteredWifiSSID, -1);
+            if (knownNetworkId != -1) {
+                // Saved network: kick off a fresh connection attempt (this
+                // also clears wpa_supplicant's auth-failure backoff) instead
+                // of forcing the user to forget and re-add it.
+                WingletGUI::inst->wifiMon->selectNetwork(knownNetworkId);
                 actionState = ACTION_STATE_MSGBOX_RETURN;
-                WingletGUI::inst->showMessageBox("Error: WiFi SSID is already added!\nTo change the PSK you must remove the network first.", "SSID Exists");
+                WingletGUI::inst->showMessageBox("Reconnecting to saved network.\nTo change the PSK, forget the network in Manage Networks first.", "Saved Network");
                 return;
             }
             else if (manuallyEntered || wifiScanAskPsk) {

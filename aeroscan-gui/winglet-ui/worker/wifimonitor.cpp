@@ -68,6 +68,7 @@ WifiMonitor::WifiMonitor(QThread *ownerThread)
     connect(this, SIGNAL(doAddOpenNetwork(QString)), this, SLOT(addOpenNetworkInThread(QString)));
     connect(this, SIGNAL(doAddProtectedNetwork(QString, QString)), this, SLOT(addProtectedNetworkInThread(QString, QString)));
     connect(this, SIGNAL(doRemoveNetwork(int)), this, SLOT(removeNetworkInThread(int)));
+    connect(this, SIGNAL(doSelectNetwork(int)), this, SLOT(selectNetworkInThread(int)));
     connect(this, SIGNAL(doScanNetworks()), this, SLOT(scanNetworksInThread()));
     connect(this, SIGNAL(doRefreshScanResults()), this, SLOT(refreshScanResultsInThread()));
 
@@ -307,6 +308,10 @@ void WifiMonitor::removeNetwork(int networkId) {
     emit doRemoveNetwork(networkId, QPrivateSignal());
 }
 
+void WifiMonitor::selectNetwork(int networkId) {
+    emit doSelectNetwork(networkId, QPrivateSignal());
+}
+
 void WifiMonitor::addOpenNetworkInThread(QString ssid) {
     if (!xferRequest("ADD_NETWORK")) {
         qWarning("Failed to send add network command");
@@ -327,7 +332,7 @@ void WifiMonitor::addOpenNetworkInThread(QString ssid) {
     if (!issueSimpleRequest(QString("SET_NETWORK %1 key_mgmt NONE").arg(newNetworkId)))
         return;
 
-    if (!issueSimpleRequest(QString("ENABLE_NETWORK %1").arg(newNetworkId)))
+    if (!selectAndReenableOthers(newNetworkId))
         return;
 
     if (!issueSimpleRequest("SAVE_CONFIG"))
@@ -347,7 +352,7 @@ void WifiMonitor::addProtectedNetworkInThread(QString ssid, QString psk) {
         return;
     }
 
-    QString ssidEscaped = ssid.replace("\"", "\\\"");
+    QString ssidEscaped = ssid.replace("\\", "\\\\").replace("\"", "\\\"");
     if (!issueSimpleRequest(QString("SET_NETWORK %1 ssid \"%2\"").arg(newNetworkId).arg(ssidEscaped)))
         return;
 
@@ -355,7 +360,7 @@ void WifiMonitor::addProtectedNetworkInThread(QString ssid, QString psk) {
     if (!issueSimpleRequest(QString("SET_NETWORK %1 psk \"%2\"").arg(newNetworkId).arg(pskEscaped)))
         return;
 
-    if (!issueSimpleRequest(QString("ENABLE_NETWORK %1").arg(newNetworkId)))
+    if (!selectAndReenableOthers(newNetworkId))
         return;
 
     if (!issueSimpleRequest("SAVE_CONFIG"))
@@ -368,6 +373,28 @@ void WifiMonitor::removeNetworkInThread(int networkId) {
     issueSimpleRequest("SAVE_CONFIG");
 }
 
+bool WifiMonitor::selectAndReenableOthers(int networkId) {
+    // SELECT_NETWORK, unlike ENABLE_NETWORK, clears the target's
+    // auth-failure backoff ("temp-disabled") state and forces an immediate
+    // association attempt even when already associated elsewhere.
+    // It also disables every other configured network, so re-enable them
+    // to keep autoconnect working across reboots and out-of-range events.
+    if (!issueSimpleRequest(QString("SELECT_NETWORK %1").arg(networkId)))
+        return false;
+
+    for (auto it = networkMap.constBegin(); it != networkMap.constEnd(); ++it) {
+        if (it.key() != networkId)
+            issueSimpleRequest(QString("ENABLE_NETWORK %1").arg(it.key()));
+    }
+    return true;
+}
+
+void WifiMonitor::selectNetworkInThread(int networkId) {
+    if (!selectAndReenableOthers(networkId))
+        return;
+    issueSimpleRequest("SAVE_CONFIG");
+}
+
 void WifiMonitor::scanNetworks() {
     emit doScanNetworks(QPrivateSignal());
 }
@@ -375,6 +402,12 @@ void WifiMonitor::scanNetworks() {
 void WifiMonitor::scanNetworksInThread() {
     // No need to issue scan if we're already scanning
     if (m_scanInProgress)
+        return;
+
+    // Don't go off-channel while an association or DHCP exchange is in
+    // progress — a scan during the 4-way handshake makes brcmfmac miss it,
+    // driving up wpa_supplicant's auth-failure backoff on the network.
+    if (m_wifiState == WIFI_CONNECTING)
         return;
 
     m_scanInProgress = true;
