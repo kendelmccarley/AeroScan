@@ -8,6 +8,12 @@ into the application. It is a port of the [avBadge 2024 "Winglet"](https://githu
 badge firmware from its custom Allwinner T113S hardware to commodity Raspberry Pi
 hardware.
 
+<p align="center">
+  <img src="docs/main-menu.png" width="640" alt="AeroScan main menu — arc menu with Radar Scope focused, brand column left, status rail right">
+  <br>
+  <em>Main menu (design-system render of the 800×480 instrument UI)</em>
+</p>
+
 ## Hardware
 
 Two build targets are provided: **Raspberry Pi 4** (AArch64, Qt eglfs on KMS/DRM)
