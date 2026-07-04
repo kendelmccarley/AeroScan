@@ -128,35 +128,26 @@ void SettingsMenu::showEvent(QShowEvent *event)
             bool manuallyEntered = actionState == SettingsMenu::ACTION_STATE_WIFI_SSID_RETURN;
 
             QMap<int, QString> knownNetworks = WingletGUI::inst->wifiMon->knownNetworks();
-            int knownNetworkId = knownNetworks.key(enteredWifiSSID, -1);
-            if (knownNetworkId != -1) {
-                // Saved network: kick off a fresh connection attempt (this
-                // also clears wpa_supplicant's auth-failure backoff) instead
-                // of forcing the user to forget and re-add it.
-                WingletGUI::inst->wifiMon->selectNetwork(knownNetworkId);
-                actionState = ACTION_STATE_MSGBOX_RETURN;
-                WingletGUI::inst->showMessageBox("Reconnecting to saved network.\nTo change the PSK, forget the network in Manage Networks first.", "Saved Network");
+            if (knownNetworks.key(enteredWifiSSID, -1) != -1) {
+                // Saved network: let the user retry with the stored PSK
+                // (clears wpa_supplicant's auth-failure backoff) or forget
+                // it and enter a new PSK — the stored one may be mistyped.
+                actionState = ACTION_STATE_WIFI_SAVED_CONFIRM;
+                auto msgbox = new MessageBox(WingletGUI::inst);
+                msgbox->setTitleText("Saved Network");
+                msgbox->setMessageText("This network is already saved. Reconnect with the saved password, or enter a new one?");
+                QStringList myBtns;
+                myBtns << "Reconnect";
+                myBtns << "New Password";
+                msgbox->setButtons(myBtns);
+                selectedMsgboxBtnIdx = 0;
+                msgbox->setSelectedIndex(selectedMsgboxBtnIdx);
+                connect(msgbox, SIGNAL(buttonClicked(int)), this, SLOT(msgboxBtnClicked(int)));
+                WingletGUI::inst->addWidgetOnTop(msgbox);
                 return;
             }
             else if (manuallyEntered || wifiScanAskPsk) {
-                actionState = ACTION_STATE_WIFI_PSK_RETURN;
-                CircularKeyboard *kbd = new CircularKeyboard(CircularKeyboard::fullKeyboard, WingletGUI::inst);
-                kbd->setTitle("Join:\n" + enteredWifiSSID);
-                kbd->setPasswordMaskEnable(true);
-                if (manuallyEntered) {
-                    kbd->setPrompt("Enter Network PSK:\n(Leave empty for open network)");
-                    kbd->setAllowEmptyInput(true);
-                }
-                else {
-                    kbd->setPrompt("Enter Network PSK:");
-                    kbd->setAllowEmptyInput(false);
-                }
-                QValidator *validator = new WifiPSKValidator(kbd);
-                kbd->setValidator(validator);
-                kbd->setValidatorFailedMsg("PSK must be between 8-63 characters");
-                kbd->setMaxLength(63);  // PSK max length of 63 letters
-                connect(kbd, SIGNAL(entryComplete(QString)), this, SLOT(cicularKbdTextEntered(QString)));
-                WingletGUI::inst->addWidgetOnTop(kbd);
+                promptWifiPsk(manuallyEntered);
                 return;
             }
             else {
@@ -166,6 +157,25 @@ void SettingsMenu::showEvent(QShowEvent *event)
             }
         }
         break;
+    }
+
+    case ACTION_STATE_WIFI_SAVED_CONFIRM: {
+        QMap<int, QString> knownNetworks = WingletGUI::inst->wifiMon->knownNetworks();
+        if (selectedMsgboxBtnIdx == 0) { // Reconnect with saved password
+            int knownNetworkId = knownNetworks.key(enteredWifiSSID, -1);
+            if (knownNetworkId != -1)
+                WingletGUI::inst->wifiMon->selectNetwork(knownNetworkId);
+            break;
+        }
+        // New Password: forget every saved entry for this SSID (manual
+        // config edits can leave duplicates), then reuse the normal join
+        // keyboard; entry completion re-adds the network.
+        for (auto it = knownNetworks.constBegin(); it != knownNetworks.constEnd(); ++it) {
+            if (it.value() == enteredWifiSSID)
+                WingletGUI::inst->wifiMon->removeNetwork(it.key());
+        }
+        promptWifiPsk(!wifiScanAskPsk);
+        return;
     }
 
     case ACTION_STATE_BT_SCAN_RETURN:
@@ -208,17 +218,36 @@ void SettingsMenu::showEvent(QShowEvent *event)
 
     case ACTION_STATE_NASR_UPDATE_CONFIRM:
         if (selectedMsgboxBtnIdx == 0) { // Yes button clicked
-            int ret = QProcess::execute("python3",
-                          {"/usr/libexec/aeroscan/nasr-update.py"});
-            if (ret == 0) {
+            // Capture stderr so a failure can show the script's actual
+            // error instead of a generic message. Blocks the UI like the
+            // confirm box warned; downloads can take minutes on slow WiFi.
+            QProcess proc;
+            proc.start("python3", {"/usr/libexec/aeroscan/nasr-update.py"});
+            bool finished = proc.waitForFinished(10 * 60 * 1000);
+            if (!finished)
+                proc.kill();
+            if (finished && proc.exitStatus() == QProcess::NormalExit
+                    && proc.exitCode() == 0) {
                 WingletGUI::inst->nasr->reload();
                 QString ed = WingletGUI::inst->nasr->edition();
                 WingletGUI::inst->showMessageBox(
                     QString("Airport frequency data updated successfully.\nEdition: %1").arg(ed.isEmpty() ? "unknown" : ed),
                     "Radio Data Updated");
             } else {
+                // Last non-empty stderr line is the exception summary
+                QString detail;
+                if (!finished) {
+                    detail = "Timed out after 10 minutes";
+                } else {
+                    const QStringList errLines = QString::fromUtf8(proc.readAllStandardError())
+                            .split('\n', Qt::SkipEmptyParts);
+                    if (!errLines.isEmpty())
+                        detail = errLines.last().trimmed().left(200);
+                }
+                if (detail.isEmpty())
+                    detail = QString("Exit code %1").arg(proc.exitCode());
                 WingletGUI::inst->showMessageBox(
-                    "Update failed. Check WiFi connection and try again.",
+                    QString("Update failed:\n%1").arg(detail),
                     "Update Failed");
             }
             actionState = ACTION_STATE_MSGBOX_RETURN;
@@ -251,6 +280,28 @@ void SettingsMenu::showEvent(QShowEvent *event)
     menuWidget->show();
 }
 
+void SettingsMenu::promptWifiPsk(bool allowEmpty)
+{
+    actionState = ACTION_STATE_WIFI_PSK_RETURN;
+    CircularKeyboard *kbd = new CircularKeyboard(CircularKeyboard::fullKeyboard, WingletGUI::inst);
+    kbd->setTitle("Join:\n" + enteredWifiSSID);
+    kbd->setPasswordMaskEnable(true);
+    if (allowEmpty) {
+        kbd->setPrompt("Enter Network PSK:\n(Leave empty for open network)");
+        kbd->setAllowEmptyInput(true);
+    }
+    else {
+        kbd->setPrompt("Enter Network PSK:");
+        kbd->setAllowEmptyInput(false);
+    }
+    QValidator *validator = new WifiPSKValidator(kbd);
+    kbd->setValidator(validator);
+    kbd->setValidatorFailedMsg("PSK must be between 8-63 characters");
+    kbd->setMaxLength(63);  // PSK max length of 63 letters
+    connect(kbd, SIGNAL(entryComplete(QString)), this, SLOT(cicularKbdTextEntered(QString)));
+    WingletGUI::inst->addWidgetOnTop(kbd);
+}
+
 void SettingsMenu::cicularKbdTextEntered(QString val)
 {
     if (actionState == ACTION_STATE_GET_DISCORD_USERNAME) {
@@ -262,6 +313,7 @@ void SettingsMenu::cicularKbdTextEntered(QString val)
     }
     else if (actionState == ACTION_STATE_WIFI_SSID_RETURN) {
         enteredWifiSSID = val;
+        wifiScanAskPsk = false;  // Manually entered SSID — encryption unknown, allow an empty PSK
     }
     else if (actionState == ACTION_STATE_WIFI_PSK_RETURN) {
         // When the PSK is entered, we can join the SSID from the previous stage as well as the new value

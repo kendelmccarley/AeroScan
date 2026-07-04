@@ -45,6 +45,7 @@ private:
         ACTION_STATE_WIFI_SSID_RETURN,
         ACTION_STATE_WIFI_PSK_RETURN,
         ACTION_STATE_WIFI_SCAN_RETURN,
+        ACTION_STATE_WIFI_SAVED_CONFIRM,
         ACTION_STATE_BT_SCAN_RETURN,
         ACTION_STATE_BT_PAIRING,
         ACTION_STATE_MSGBOX_RETURN,
@@ -67,6 +68,7 @@ private:
     SettingsMenuModel *menuModel;
 
     void startBtPairing();
+    void promptWifiPsk(bool allowEmpty);
 
     AbstractSettingsEntry *activeItem;
     QString enteredWifiSSID;
