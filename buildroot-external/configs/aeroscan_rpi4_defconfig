@@ -98,6 +98,10 @@ BR2_PACKAGE_GPSD_UBX=y
 
 # ─── Python 3 (Phase 11: DroneAware BLE/WiFi feeders) ────────────────────────
 BR2_PACKAGE_PYTHON3=y
+# ssl + zlib: required by nasr-update.py (HTTPS download from the FAA,
+# deflate decompression of the NASR CSV zip)
+BR2_PACKAGE_PYTHON3_SSL=y
+BR2_PACKAGE_PYTHON3_ZLIB=y
 
 # ─── Bluetooth ────────────────────────────────────────────────────────────────
 # BCM43xx firmware (onboard RPi4 WiFi+BT chip).
