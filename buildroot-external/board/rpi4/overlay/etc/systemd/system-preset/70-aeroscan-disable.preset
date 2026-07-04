@@ -1,7 +1,7 @@
 # aeroscan-gui does NOT autostart during development — boot lands on the tty1
 # login shell; start the GUI manually with:  systemctl start aeroscan-gui
 # (The retired aeroscan-bt-pair flow that used to manage GUI startup is gone;
-# bluetooth pairing is now in-app, see BLUETOOTH.md.)
+# bluetooth pairing is now in-app.)
 disable aeroscan-gui.service
 enable aeroscan-bt-init.service
 # dump1090 is started by aeroscan-gui.service (Wants=) and stopped with it

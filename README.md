@@ -120,4 +120,4 @@ buildroot/, output/       (gitignored) Buildroot tree and build output
   passkey shown on screen), audio output selection (headphone jack / HDMI),
   WiFi and SSH. Code complete; on-device verification ongoing.
 
-Further design notes live in `DEVELOPMENT_PLAN.md` and `BLUETOOTH.md`.
+Further design notes live in `DEVELOPMENT_PLAN.md`.

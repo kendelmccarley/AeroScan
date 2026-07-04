@@ -63,7 +63,7 @@ chmod +x "${TARGET_DIR}/usr/sbin/aeroscan-display-init"  2>/dev/null || true
 # after this script), so do not create/remove those symlinks here.
 
 # ─── Purge retired bluetooth debug/pairing tooling ────────────────────────────
-# Bluetooth pairing moved in-app (BlueZ D-Bus, see BLUETOOTH.md). These files
+# Bluetooth pairing moved in-app (BlueZ D-Bus). These files
 # were removed from the overlay, but overlay rsync never deletes from
 # TARGET_DIR — stale copies from older builds kept shipping and hijacking boot
 # (aeroscan-bt-pair stopped the GUI and took over tty1).
