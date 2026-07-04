@@ -10,8 +10,9 @@
 #define maxZoom 40
 #define minZoom 1
 
-#define SWEEPINTERVAL 50
-#define DEGREES_PER_INTERVAL 9
+// 10 Hz repaint; 18°/tick keeps the sweep at 180°/s (2 s per revolution)
+#define SWEEPINTERVAL 100
+#define DEGREES_PER_INTERVAL 18
 
 #define AIRCRAFT_SIZE 7  // Arrow icon half-size in pixels (center to tip/base)
 

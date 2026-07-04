@@ -2,6 +2,11 @@
 Description=dump1090 ADS-B decoder
 After=network.target systemd-udev-settle.service
 Wants=network.target
+# Runs only while the GUI does: preset-disabled at boot, pulled in by
+# aeroscan-gui.service (Wants=), and stopped with it (PartOf=). dump1090
+# otherwise demodulates 2.4 MS/s nonstop with nothing consuming the output,
+# which pins a core and overheats the Pi whenever an RTL-SDR is plugged in.
+PartOf=aeroscan-gui.service
 
 [Service]
 Type=simple

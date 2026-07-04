@@ -4,3 +4,6 @@
 # bluetooth pairing is now in-app, see BLUETOOTH.md.)
 disable aeroscan-gui.service
 enable aeroscan-bt-init.service
+# dump1090 is started by aeroscan-gui.service (Wants=) and stopped with it
+# (PartOf=) — not at boot, where it would pin a core demodulating for nobody.
+disable dump1090.service

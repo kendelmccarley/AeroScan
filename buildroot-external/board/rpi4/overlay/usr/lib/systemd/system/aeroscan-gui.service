@@ -1,6 +1,10 @@
 [Unit]
 Description=AeroScan GUI
-After=sysinit.target
+After=sysinit.target dump1090.service
+# dump1090 runs only alongside the GUI (see PartOf= in dump1090.service);
+# its own 5 s ExecStartPre covers USB enumeration, and the GUI's ADS-B
+# worker reconnects to port 30003 every 5 s, so ordering is best-effort.
+Wants=dump1090.service
 
 [Service]
 Type=simple
