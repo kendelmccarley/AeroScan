@@ -46,7 +46,9 @@ make rpi4                        # configure + full build (or: make rpi2)
 Flash the result to an SD card:
 
 ```bash
-dd if=output/rpi4/images/sdcard.img of=/dev/sdX bs=4M status=progress
+# oflag=direct + conv=fsync make dd block until data is physically on the
+# card — without them, pulling the card early silently corrupts the rootfs
+dd if=output/rpi4/images/sdcard.img of=/dev/sdX bs=4M oflag=direct conv=fsync status=progress
 ```
 
 Useful targets (see `Makefile` for the full list):
