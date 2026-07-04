@@ -5,6 +5,12 @@ Download and parse FAA NASR 28-day subscription data.
 Extracts airband communication frequencies (118–137 MHz) for all US airports
 and writes a compact CSV used by AeroScan's radio tuner preset system.
 
+Downloads the CSV-only extract (~22 MB) rather than the full subscription
+ZIP (~250 MB, whose CSVs are buried in a nested CSV_Data/*.zip anyway).
+Frequencies come from FRQ.csv, which carries the serviced facility ident,
+name, decimal coordinates, frequency, and use code in a single file — no
+join against APT_BASE.csv is needed.
+
 Output: /var/lib/aeroscan/apt_freq.csv
         /var/lib/aeroscan/nasr_edition.txt  (effective date of data)
 
@@ -18,6 +24,7 @@ Usage:
 import argparse
 import csv
 import datetime
+import io
 import json
 import os
 import re
@@ -32,10 +39,14 @@ import zipfile
 OUTPUT_DIR       = "/var/lib/aeroscan"
 APT_FREQ_CSV     = "apt_freq.csv"
 EDITION_FILE     = "nasr_edition.txt"
-NASR_API_URL     = ("https://soa.smext.faa.gov/apra/nfdc/nasr/chart"
+
+# APRA edition API (the old soa.smext.faa.gov host no longer resolves)
+NASR_API_URL     = ("https://external-api.faa.gov/apra/nfdc/nasr/chart"
                     "?edition=current")
-NASR_ZIP_PATTERN = ("https://aeronav.faa.gov/Upload_313-d/supplements/"
-                    "NASR_Subscription_{date}.zip")
+
+# CSV-only extract; date is zero-padded DD_Mon_YYYY, e.g. 11_Jun_2026
+NASR_CSV_ZIP_PATTERN = ("https://nfdc.faa.gov/webContent/28DaySub/extra/"
+                        "{date}_CSV.zip")
 
 # 28-day cycle epoch: known NASR effective date
 NASR_EPOCH = datetime.date(2025, 1, 23)
@@ -44,13 +55,6 @@ NASR_CYCLE_DAYS = 28
 # Airband frequency bounds (MHz)
 AIRBAND_MIN = 118.0
 AIRBAND_MAX = 137.0
-
-# Frequency types to include (FREQ_USE_CODE values in NASR)
-USEFUL_TYPES = {
-    "CTAF", "UNICOM", "TWR", "GND", "APP", "DEP",
-    "ATIS", "AWOS", "ASOS", "TRACON", "MULTICOM",
-    "CLNC DEL", "CLNC", "RAMP"
-}
 
 USER_AGENT = "AeroScan/1.0 (+https://github.com/your-org/aeroscan)"
 
@@ -77,48 +81,63 @@ def candidate_dates():
     ]
 
 
+def csv_zip_url(d):
+    return NASR_CSV_ZIP_PATTERN.format(date=d.strftime("%d_%b_%Y"))
+
+
 # ── Download ──────────────────────────────────────────────────────────────────
 
-def fetch_url_via_api():
-    """Ask FAA API for the current edition URL. Returns URL string or None."""
+def fetch_edition_date_via_api():
+    """Ask the FAA APRA API for the current edition date, or None."""
     try:
-        req = urllib.request.Request(NASR_API_URL,
-                                     headers={"User-Agent": USER_AGENT})
+        req = urllib.request.Request(NASR_API_URL, headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
+        })
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
-        # Response is a list; each item may have 'url' or nested 'edition'
-        for item in (data if isinstance(data, list) else [data]):
-            url = item.get("url") or item.get("download_url")
-            if url and "aeronav.faa.gov" in url and url.endswith(".zip"):
-                return url
+        # {"status": {...}, "edition": [{"editionDate": "06/11/2026",
+        #   "product": {"url": ".../28DaySubscription_Effective_2026-06-11.zip"}}]}
+        editions = data.get("edition", [])
+        for item in (editions if isinstance(editions, list) else [editions]):
+            url = (item.get("product") or {}).get("url", "")
+            m = re.search(r'(\d{4})-(\d{2})-(\d{2})', url)
+            if m:
+                return datetime.date(*map(int, m.groups()))
+            m = re.match(r'(\d{2})/(\d{2})/(\d{4})', item.get("editionDate", ""))
+            if m:
+                mm, dd, yyyy = map(int, m.groups())
+                return datetime.date(yyyy, mm, dd)
     except Exception as e:
         print(f"  API query failed: {e}", file=sys.stderr)
     return None
 
 
-def resolve_download_url():
-    """Return (url, edition_date_str) for the current NASR subscription."""
-    # Try FAA API first
-    url = fetch_url_via_api()
-    if url:
-        m = re.search(r'(\d{4}-\d{2}-\d{2})', url)
-        date_str = m.group(1) if m else "unknown"
-        return url, date_str
+def url_exists(url):
+    """Probe url with a 1-byte ranged GET (nfdc.faa.gov rejects HEAD with 503)."""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
+                                               "Range": "bytes=0-0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10):
+            return True
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 404):
+            return False
+        raise
 
-    # Fall back to computed cycle dates
-    for d in candidate_dates():
-        date_str = d.strftime("%Y-%m-%d")
-        url = NASR_ZIP_PATTERN.format(date=date_str)
-        try:
-            req = urllib.request.Request(url, method="HEAD",
-                                         headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(req, timeout=10):
-                pass
-            return url, date_str
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                continue
-            raise
+
+def resolve_download_url():
+    """Return (url, edition_date_str) for the current NASR CSV extract."""
+    dates = []
+    api_date = fetch_edition_date_via_api()
+    if api_date:
+        dates.append(api_date)
+    dates += [d for d in candidate_dates() if d not in dates]
+
+    for d in dates:
+        url = csv_zip_url(d)
+        if url_exists(url):
+            return url, d.strftime("%Y-%m-%d")
 
     raise RuntimeError("Could not resolve current NASR edition URL.")
 
@@ -143,160 +162,81 @@ def download_zip(url, dest_path):
     print()
 
 
-# ── Column detection ──────────────────────────────────────────────────────────
+# ── Parsing ───────────────────────────────────────────────────────────────────
 
-def find_col(header, candidates):
-    """Return the first candidate found in header list, or None."""
-    for c in candidates:
-        if c in header:
-            return c
-    return None
-
-
-def require_col(header, candidates, context):
-    col = find_col(header, candidates)
-    if col is None:
-        raise RuntimeError(
-            f"Cannot find {context} column in header.\n"
-            f"  Tried: {candidates}\n"
-            f"  Available: {header}"
-        )
-    return col
-
-
-# ── Coordinate parsing ────────────────────────────────────────────────────────
-
-_DMS_RE = re.compile(r'^(\d+)-(\d+)-([\d.]+)([NSns])$')
-_DML_RE = re.compile(r'^(\d+)-(\d+)-([\d.]+)([EWew])$')
-
-
-def parse_lat(val):
-    val = val.strip()
-    if not val:
-        return None
+def to_float(val):
     try:
-        return float(val)
-    except ValueError:
-        m = _DMS_RE.match(val)
-        if m:
-            d, mn, s, h = m.groups()
-            deg = int(d) + int(mn) / 60.0 + float(s) / 3600.0
-            return deg if h.upper() == 'N' else -deg
-    return None
-
-
-def parse_lon(val):
-    val = val.strip()
-    if not val:
+        return float(val.strip())
+    except (ValueError, AttributeError):
         return None
-    try:
-        f = float(val)
-        return f
-    except ValueError:
-        m = _DML_RE.match(val)
-        if m:
-            d, mn, s, h = m.groups()
-            deg = int(d) + int(mn) / 60.0 + float(s) / 3600.0
-            return deg if h.upper() == 'E' else -deg
-    return None
 
-
-# ── Frequency parsing ─────────────────────────────────────────────────────────
 
 def parse_freq_mhz(val):
     """Return frequency in MHz as float, or None. Handles MHz and kHz strings."""
     val = val.strip().rstrip('T').rstrip('B')  # strip TX/RX suffixes sometimes present
     if not val:
         return None
-    try:
-        f = float(val)
-        # Frequencies > 1000 are in kHz
-        if f > 1000:
-            f /= 1000.0
-        return f
-    except ValueError:
+    f = to_float(val)
+    if f is None:
         return None
+    # Frequencies > 1000 are in kHz
+    if f > 1000:
+        f /= 1000.0
+    return f
 
 
-# ── Parsing ───────────────────────────────────────────────────────────────────
+def parse_frequencies(frq_file):
+    """Parse FRQ.csv (text file object).
 
-def parse_airports(apt_base_path):
-    """Return dict: site_no -> {ident, name, lat, lon}"""
-    airports = {}
-    with open(apt_base_path, newline='', encoding='utf-8', errors='replace') as f:
-        reader = csv.DictReader(f)
-        h = reader.fieldnames or []
+    Return list of dicts: ident, name, lat, lon, freq_mhz, freq_type.
+    """
+    reader = csv.DictReader(frq_file)
+    h = reader.fieldnames or []
+    for col in ("FACILITY", "LAT_DECIMAL", "LONG_DECIMAL", "FREQ", "FREQ_USE"):
+        if col not in h:
+            raise RuntimeError(f"Cannot find {col} column in FRQ.csv header.\n"
+                               f"  Available: {h}")
 
-        site_col  = require_col(h, ["SITE_NO"],                              "site number")
-        ident_col = find_col(h,    ["ICAO_ID", "ICAO", "ARPT_ID", "FAA_IDENT"])
-        lid_col   = find_col(h,    ["ARPT_ID", "FAA_IDENT", "FAA_LID", "IDENTIFIER"])
-        name_col  = require_col(h, ["ARPT_NAME", "NAME", "AIRPORT_NAME"],    "airport name")
-        lat_col   = require_col(h, ["LATITUDE_DECIMAL", "LAT_DECIMAL",
-                                    "LATITUDE", "LAT",  "LAT_DEG_DEC"],      "latitude")
-        lon_col   = require_col(h, ["LONGITUDE_DECIMAL", "LONG_DECIMAL",
-                                    "LONGITUDE", "LON", "LON_DEG_DEC"],      "longitude")
-
-        for row in reader:
-            site = row[site_col].strip()
-            if not site:
-                continue
-            lat = parse_lat(row[lat_col])
-            lon = parse_lon(row[lon_col])
-            if lat is None or lon is None:
-                continue
-
-            # Prefer ICAO 4-letter ID; fall back to FAA 3-letter LID
-            ident = ""
-            if ident_col:
-                ident = row[ident_col].strip()
-            if not ident and lid_col:
-                ident = row[lid_col].strip()
-            if not ident:
-                continue
-
-            airports[site] = {
-                "ident": ident,
-                "name":  row[name_col].strip(),
-                "lat":   lat,
-                "lon":   lon,
-            }
-    return airports
-
-
-def parse_frequencies(apt_freq_path, airports):
-    """Return list of dicts: ident, name, lat, lon, freq_mhz, freq_type."""
     records = []
-    with open(apt_freq_path, newline='', encoding='utf-8', errors='replace') as f:
-        reader = csv.DictReader(f)
-        h = reader.fieldnames or []
+    seen = set()
+    for row in reader:
+        # Prefer the airport being serviced; fall back to the servicing facility
+        ident = (row.get("SERVICED_FACILITY") or "").strip() \
+                or row["FACILITY"].strip()
+        if not ident:
+            continue
 
-        site_col  = require_col(h, ["SITE_NO"],                                  "site number")
-        freq_col  = require_col(h, ["FREQ_NBR", "FREQ", "FREQUENCY", "FREQ_MHZ"],"frequency")
-        type_col  = require_col(h, ["FREQ_USE_CODE", "FREQ_USE", "FREQ_TYPE",
-                                    "USE_CODE", "FREQ_SRV_CD"],                  "frequency type")
+        lat = to_float(row["LAT_DECIMAL"])
+        lon = to_float(row["LONG_DECIMAL"])
+        if lat is None or lon is None:
+            continue
 
-        for row in reader:
-            site = row[site_col].strip()
-            apt = airports.get(site)
-            if not apt:
-                continue
+        freq = parse_freq_mhz(row["FREQ"])
+        if freq is None or freq < AIRBAND_MIN or freq > AIRBAND_MAX:
+            continue
 
-            freq = parse_freq_mhz(row[freq_col])
-            if freq is None or freq < AIRBAND_MIN or freq > AIRBAND_MAX:
-                continue
+        ftype = row["FREQ_USE"].strip().upper() or "COMM"
+        # AWOS rows repeat the facility ident in FREQ_USE ("00U AWOS-3")
+        if ftype.startswith(ident + " "):
+            ftype = ftype[len(ident) + 1:].strip() or "COMM"
+        name = (row.get("SERVICED_FAC_NAME") or "").strip() \
+               or (row.get("FAC_NAME") or "").strip()
 
-            ftype = row[type_col].strip().upper()
-            if not ftype:
-                ftype = "COMM"
+        key = (ident, f"{freq:.3f}", ftype)
+        if key in seen:
+            continue
+        seen.add(key)
 
-            records.append({
-                "ident":    apt["ident"],
-                "name":     apt["name"],
-                "lat":      apt["lat"],
-                "lon":      apt["lon"],
-                "freq_mhz": f"{freq:.3f}",
-                "freq_type": ftype,
-            })
+        # The GUI reader splits lines on bare commas and does not unquote,
+        # so keep commas and double quotes out of the text fields.
+        records.append({
+            "ident":    ident.replace(",", " "),
+            "name":     name.replace(",", " ").replace('"', "'"),
+            "lat":      lat,
+            "lon":      lon,
+            "freq_mhz": f"{freq:.3f}",
+            "freq_type": ftype.replace(",", " ").replace('"', "'"),
+        })
 
     return records
 
@@ -322,43 +262,22 @@ def main():
         tmp_path = tmp.name
 
     try:
-        print(f"Downloading NASR subscription…")
+        print("Downloading NASR CSV data…")
         download_zip(url, tmp_path)
 
-        print("Extracting airport data…")
+        print("Parsing frequencies…")
         with zipfile.ZipFile(tmp_path, 'r') as zf:
-            names = zf.namelist()
-            # Find APT_BASE.csv and APT_FREQ.csv (may be in a subdirectory)
-            def find_member(pattern):
-                for n in names:
-                    if re.search(pattern, n, re.IGNORECASE):
-                        return n
-                return None
+            frq_member = next((n for n in zf.namelist()
+                               if re.fullmatch(r'FRQ\.csv', n, re.IGNORECASE)), None)
+            if not frq_member:
+                raise RuntimeError(
+                    f"FRQ.csv not found in ZIP.\nContents: {zf.namelist()[:20]}")
 
-            base_member = find_member(r'APT.?BASE\.csv$') or find_member(r'APT\.csv$')
-            freq_member = find_member(r'APT.?FREQ\.csv$')
-
-            if not base_member:
-                raise RuntimeError(f"APT_BASE.csv not found in ZIP.\nContents: {names[:20]}")
-            if not freq_member:
-                raise RuntimeError(f"APT_FREQ.csv not found in ZIP.\nContents: {names[:20]}")
-
-            print(f"  Airport base: {base_member}")
-            print(f"  Frequencies:  {freq_member}")
-
-            with tempfile.TemporaryDirectory() as extract_dir:
-                zf.extract(base_member, extract_dir)
-                zf.extract(freq_member, extract_dir)
-                base_path = os.path.join(extract_dir, base_member)
-                freq_path = os.path.join(extract_dir, freq_member)
-
-                print("Parsing airports…")
-                airports = parse_airports(base_path)
-                print(f"  Loaded {len(airports)} airports")
-
-                print("Parsing frequencies…")
-                records = parse_frequencies(freq_path, airports)
-                print(f"  Found {len(records)} airband frequencies")
+            with zf.open(frq_member) as raw:
+                frq_file = io.TextIOWrapper(raw, encoding='utf-8', errors='replace',
+                                            newline='')
+                records = parse_frequencies(frq_file)
+        print(f"  Found {len(records)} airband frequencies")
 
         out_csv = os.path.join(out_dir, APT_FREQ_CSV)
         print(f"Writing {out_csv}…")
