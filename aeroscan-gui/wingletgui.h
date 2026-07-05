@@ -16,6 +16,7 @@
 #include "winglet-ui/worker/dronereceiver.h"
 #include "winglet-ui/worker/rtlfmworker.h"
 #include "winglet-ui/worker/nasrdatabase.h"
+#include "winglet-ui/worker/radiopresets.h"
 #include "winglet-ui/widget/touchbuttonoverlay.h"
 
 #define RELEASE_NOTES_FLAG_FILE "/var/show_release_notes"
@@ -48,6 +49,7 @@ public:
     WingletUI::DroneReceiver *droneReceiver;
     WingletUI::RtlFmWorker   *rtlFm;
     WingletUI::NASRDatabase  *nasr;
+    WingletUI::RadioPresets  *presets;
 
     static WingletGUI* inst;
 
@@ -60,8 +62,16 @@ private slots:
     void colorPaletteUpdated();
     void overlayZonePressed(int zone);
     void applyAudioOutput(int output);
+    void btPairedDevicesChanged();
 
 private:
+    bool writeAudioOutputConf(int output);
+    int lastGoodAudioOutput = 0;
+    bool btAudioWasConnected = false;
+    // Wired output (jack/HDMI) that was active before headphones auto-selected
+    // themselves, restored when they disconnect; -1 = nothing to restore.
+    int btAudioRevertOutput = -1;
+
     QWidget *centralContainer;
     QStackedWidget *appStack;
     WingletUI::TouchButtonOverlay *leftOverlay;

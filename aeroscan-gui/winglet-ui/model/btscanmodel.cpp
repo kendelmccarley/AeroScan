@@ -3,8 +3,8 @@
 
 namespace WingletUI {
 
-BtScanModel::BtScanModel(QObject *parent)
-    : QAbstractItemModel{parent}, m_refreshTimer(this)
+BtScanModel::BtScanModel(BluetoothMonitor::DeviceFilter filter, QObject *parent)
+    : QAbstractItemModel{parent}, m_refreshTimer(this), m_filter(filter)
 {
     connect(WingletGUI::inst->btMon, SIGNAL(scanResultsChanged()), this, SLOT(scanResultsChanged()));
     m_refreshTimer.setInterval(refreshIntervalMs);
@@ -12,7 +12,7 @@ BtScanModel::BtScanModel(QObject *parent)
     connect(&m_refreshTimer, SIGNAL(timeout()), this, SLOT(refreshTimerFired()));
 
     WingletGUI::inst->btMon->startScan();
-    m_scanResults = WingletGUI::inst->btMon->scanResults();
+    m_scanResults = WingletGUI::inst->btMon->scanResults(m_filter);
 }
 
 BtScanModel::~BtScanModel()
@@ -46,7 +46,7 @@ void BtScanModel::applyScanResults()
     QList<BtDeviceInfo> oldScanResults = m_scanResults;
 
     // 3. Refresh scan results
-    m_scanResults = WingletGUI::inst->btMon->scanResults();
+    m_scanResults = WingletGUI::inst->btMon->scanResults(m_filter);
 
     // 4. Update the persistent model indices (matched by BlueZ object path)
     for (auto oldIdx : oldPersistentIndices) {
@@ -76,7 +76,7 @@ QVariant BtScanModel::data(const QModelIndex &index, int role) const
     // Invalid index is the root node
     if (!index.isValid()) {
         if (role == Qt::DisplayRole)
-            return "Pair\nKeyboard";
+            return m_filter == BluetoothMonitor::FILTER_AUDIO ? "Pair\nHeadphones" : "Pair\nKeyboard";
         else
             return {};
     }

@@ -36,9 +36,10 @@ original T113S. Qt5 compiled for ARMv7 applies directly with no architecture cha
 **No onboard wireless:** The RPi 2 Model B has no onboard WiFi or Bluetooth. USB dongles are
 required for both. A powered USB hub is recommended when all USB peripherals are attached.
 
-**RTL-SDR dongle dual use:** The single RTL-SDR dongle is time-shared between dump1090 (ADS-B)
-and the software radio receiver. The Radio Tuner stops dump1090 before opening the dongle and
-restarts it on exit. A second dongle eliminates the handoff but is not required.
+**RTL-SDR dongles:** Two dongles, as built (the original time-share/handoff design was
+dropped — see Phase 6b). Device 0 is dedicated to dump1090 (ADS-B); device 1 to the
+software radio receiver (`rtl_fm -d 1`). The Radio Tuner menu entry grays out when
+fewer than two dongles are present; ADS-B is never interrupted.
 
 ### Future Target (Production)
 | Component | Part |
@@ -240,124 +241,281 @@ last-known position survives reboots.
 
 ---
 
-### Phase 6 — Software Radio Receiver
+### Phase 6 — Software Radio Receiver ◐ IN PROGRESS
 **Goal:** Radio Tuner screen receives FM broadcast, aviation airband AM, and 2m amateur
-NFM using the same RTL-SDR dongle as ADS-B, with clean ADS-B handoff on open/close.
+NFM on a dedicated second RTL-SDR dongle, with presets, squelch, and a UI fully
+operable from the four touch zones (no keyboard required).
 
-#### 6a — System prerequisites
-- `BR2_PACKAGE_RTL_SDR=y` — provides `rtl_fm` command-line tool (separate from
-  `librtlsdr`; includes `rtl_test`, `rtl_eeprom`, etc.)
-- `BR2_PACKAGE_ALSA_UTILS=y`, `BR2_PACKAGE_ALSA_LIB=y` — provides `aplay`
-- Kernel audio config fragment additions:
-  ```
-  CONFIG_SND=y
-  CONFIG_SND_BCM2835=m      # RPi 2 onboard audio (3.5mm jack + HDMI)
-  CONFIG_SND_USB_AUDIO=m    # USB audio dongle support
-  ```
-- dump1090.service `Restart=on-failure` (already set in Phase 4) ensures `systemctl stop`
-  works cleanly from the Radio Tuner
+**Status:** The core tuner shipped ahead of this plan with a different architecture
+than originally written here — two dongles instead of a dump1090 handoff, and live
+FAA NASR data instead of a static airband JSON. Sub-phases 6a–6e below are rewritten
+as-built; 6f–6k are the remaining work.
 
-#### 6b — Frequency database
-Preset frequencies are loaded from a JSON file bundled in the image, not hard-coded.
-This allows updates without reflashing.
+| Sub-phase | Scope | Status |
+|---|---|---|
+| 6a | System prerequisites (rtl_fm, aplay, audio routing) | ✓ COMPLETE |
+| 6b | Dongle architecture (2 dongles, no handoff) | ✓ COMPLETE |
+| 6c | Audio pipeline (FM wbfm + airband AM) | ✓ COMPLETE |
+| 6d | Airband frequency data (NASR nearby query) | ✓ COMPLETE |
+| 6e | Tuner screen v1 (CanardBoard) | ✓ COMPLETE (keyboard-dependent) |
+| 6f | 2m amateur band (NFM) | ✓ CODE COMPLETE (verify on HW) |
+| 6g | Squelch | ✓ CODE COMPLETE (tune defaults on HW) |
+| 6h | User presets (favorites, JSON store) | ✓ CODE COMPLETE (verify on HW) |
+| 6i | Tuner screen v2 — touch-first layout rework | ✓ CODE COMPLETE (verify on HW) |
+| 6j | Preset browser + save-preset flow | ✓ CODE COMPLETE (verify on HW) |
+| 6k | Band scan (optional stretch) | pending |
 
-**File:** `/usr/share/aeroscan-gui/frequencies.json`
+#### 6a — System prerequisites ✓ AS BUILT
+- `rtl_fm` comes from `BR2_PACKAGE_LIBRTLSDR` (no separate rtl-sdr package needed).
+- `BR2_PACKAGE_ALSA_UTILS` with `APLAY` + `AMIXER`.
+- Audio output routing is owned by Settings → Audio (Headphone Jack / HDMI /
+  Bluetooth), which writes `/etc/asound.conf`; `aplay` always opens the ALSA
+  `default` device. The original open question "which ALSA device?" is resolved —
+  the tuner never passes `-D`.
+- `RtlFmWorker::restartAudio()` reopens the stream when the output route changes
+  (called by `WingletGUI::writeAudioOutputConf` and on Bluetooth reconnect).
+
+#### 6b — Dongle architecture ✓ AS BUILT (supersedes the "dongle handoff" design)
+The original plan stopped dump1090 to borrow the ADS-B dongle. The implemented
+design instead requires **two RTL-SDR dongles**: device 0 = dump1090 (ADS-B,
+`--device-index 0`), device 1 = radio tuner (`rtl_fm -d 1`).
+`RtlFmWorker::pollAvailability()` counts dongles every 3 s; the main-menu Radio
+Tuner entry grays out below two, and the tuner window closes itself if the dongle
+is pulled mid-session. No dump1090 stop/start, no ADS-B coverage gap.
+
+#### 6c — Audio pipeline ✓ AS BUILT (FM/AM; NFM added in 6f)
+Two `QProcess` objects piped via `setStandardOutputProcess()`:
+`rtl_fm -d 1 [mode opts] -` → `aplay -r 48000 -f S16_LE -t raw -c 1 -`
+
+| Band | Freq encoding | rtl_fm flags (as built / planned) | Status |
+|---|---|---|---|
+| FM broadcast 87.9–107.9 MHz | int ×10 (1017 = 101.7) | `-M wbfm -s 170000 -r 48000 -g 20` | ✓ |
+| Airband AM 118.000–136.975 MHz | kHz (121500) | `-M am -s 200000 -r 48000 -g 20` + `-l SQL` (6g) | ✓ (squelch pending) |
+| 2m amateur 144.000–148.000 MHz | kHz (146520) | `-M fm -s 12000 -r 48000 -g 20 -l SQL` (`-E deemp` — verify on HW) | 6f |
+
+Note: rtl_fm has no runtime control channel — every retune/squelch/mode change
+restarts the pipeline. `tune()` already works this way; 6g adds a ~300 ms restart
+debounce so held-down keys don't thrash the dongle.
+
+#### 6d — Airband frequency data ✓ AS BUILT (replaces static frequencies.json for airband)
+Airband presets are **live FAA NASR data**, not a baked file:
+- Settings → Update Radio Data runs `/usr/libexec/aeroscan/nasr-update.py` →
+  `/var/lib/aeroscan/apt_freq.csv` (+ `nasr_edition.txt`), refreshed on the FAA
+  28-day cycle over WiFi.
+- `NASRDatabase::queryNearby(lat, lon, 20 nm, max 30)` feeds the tuner using the
+  GPS position (or the cached last-known position), sorted by distance, with
+  ident + frequency type (TWR/CTAF/GND/ATIS…).
+- FM and 2m have no equivalent source — they get user presets in 6h.
+
+#### 6e — Tuner screen v1 ✓ AS BUILT — `winglet-ui/window/canardboard.{h,cpp}`
+(Class name kept from the avBadge "Canard" RF add-on; this is the "RadioTuner"
+of the original plan.) Digit-spinbox frequency entry, FM/Airband toggle, NASR
+preset stepper, volume slider, Canard logo watermark, StatusBar.
+
+**Known limitation motivating 6i:** v1 navigation depends on Left/Right (digit
+cursor, mode switch) and Return (focus cycling, preset select). The touch overlay
+only produces **Up / Down / A / B** (+ center-tap = A), so v1 is not fully operable
+without a Bluetooth keyboard. v2 must be complete with those four keys.
+
+#### 6f — 2m amateur band (NFM) ✓ CODE COMPLETE (2026-07-04, awaiting on-device verification)
+- `RtlFmWorker`: add `MODE_HAM2M`; constants `HAM2M_MIN_FREQ = 144000`,
+  `HAM2M_MAX_FREQ = 148000`, kHz encoding and 3 decimal digits like airband;
+  last-digit tuning rounds to 5 kHz steps (same trick airband uses).
+- Pipeline flags per the 6c table. Start without `-E deemp`; add if audio is
+  shrill on-air.
+- `AppSettings`: `canardLastHam2mFreq` (default 146520 — national simplex
+  calling) and `canardLastHam2mPreset`, saved/restored by the tuner exactly like
+  the FM/airband pairs.
+- Band cycle order: FM → Airband → 2m.
+- Receive-only; this is the substrate Phase 11 (APRS decode, 144.390) builds on.
+
+#### 6g — Squelch ✓ CODE COMPLETE (2026-07-04, defaults need on-site tuning)
+- `RtlFmWorker::setSquelch(int)` → rtl_fm `-l` (linear amplitude units, 0–~200,
+  not dB). Defaults: AM = 60, NFM = 50, FM broadcast = 0 (always open — hide the
+  control in FM mode).
+- Persisted per mode: `canardSquelchAm`, `canardSquelchNfm` in `AppSettings`.
+- Changing squelch restarts rtl_fm (see 6c debounce note).
+- Optimal thresholds are site-dependent — tune on hardware, ship the defaults.
+
+#### 6h — User presets (favorites) ✓ CODE COMPLETE (2026-07-05, awaiting on-device verification)
+As built: `winglet-ui/worker/radiopresets.{h,cpp}` owned by `WingletGUI` (`presets`),
+loads `/var/lib/aeroscan/radio_presets.json`, importing the seed
+`/usr/share/aeroscan-gui/frequencies.json` (Buildroot common overlay) on first
+run. `presetsForBand(mode)`, `add/remove/rename`, `presetsChanged()`; kHz stored
+uniformly with `uiFreqToKhz()/khzToUiFreq()` at the boundary.
+
+Original design below:
+- Store: `/var/lib/aeroscan/radio_presets.json` — writable, survives reflash of
+  `/usr`, created on first save. Seed defaults ship in the image at
+  `/usr/share/aeroscan-gui/frequencies.json` (Buildroot overlay) and are imported
+  on first run if the store doesn't exist:
 
 ```json
 {
-  "airband": [
-    {"name": "Guard",       "freq_khz": 121500},
-    {"name": "Local Tower", "freq_khz": 0},
-    ...
-  ],
-  "fm": [
-    {"name": "Local FM 1",  "freq_khz": 0},
-    ...
-  ],
-  "ham_2m": [
-    {"name": "2m Calling",  "freq_khz": 146520},
-    {"name": "APRS",        "freq_khz": 144390},
-    ...
+  "version": 1,
+  "presets": [
+    {"band": "airband", "name": "Guard",      "freq_khz": 121500},
+    {"band": "ham2m",   "name": "2m Calling", "freq_khz": 146520},
+    {"band": "ham2m",   "name": "APRS",       "freq_khz": 144390}
   ]
 }
 ```
 
-Airband frequencies are sourced from the FAA NASR 28-day subscription data (free,
-machine-readable CSV). FM and 2m presets are user-defined. The file is installed via
-the Buildroot overlay and can be updated over WiFi in a future phase.
+- New class `winglet-ui/worker/radiopresets.{h,cpp}`: GUI-thread store owned by
+  `WingletGUI` (like `nasr`), lazy load, save-on-change, `presetsChanged()` signal.
+  API: `presetsForBand(mode)`, `add(mode, name, freqKhz)`, `remove(id)`,
+  `rename(id, name)`.
+- FM encoding note: store `freq_khz` in the file (89100), convert to/from the
+  ×10 UI encoding (891) at the store boundary so the file format is uniform.
+- Airband keeps the NASR nearby list as its primary source; favorites supplement
+  it (Guard, home-field frequencies that may be >20 nm away, etc.).
 
-#### 6c — Dongle handoff
-When the Radio Tuner opens:
-1. `QtConcurrent::run` → `systemctl stop dump1090` (blocking, ~1–2 sec)
-2. rtl_fm subprocess starts on released dongle
-3. Status bar ADS-B icon goes dark (ADSBReceiver loses connection to port 30003,
-   shows disconnected state automatically)
+#### 6i — Tuner screen v2: touch-first layout rework (CanardBoard) ✓ CODE COMPLETE (2026-07-05, awaiting on-device verification)
+As built: vertical control stack with Up/Down row navigation, A activate, and
+per-row edit modes (frequency digit cursor, volume ±5, squelch ±5, live-tuning
+preset stepper). Softvol volume wired through all three `writeAudioOutputConf`
+variants (`Radio` control pinned to the Headphones card) + `amixer -c Headphones
+sset Radio`. Two deliberate deviations from the sketch below: (1) presets are a
+single live-tuning stepper row (favorites + NASR nearby) plus an "All Presets…"
+row into the 6j browser, rather than several inline preset rows; (2) **B always
+closes the tuner** — the platform routes touch-B straight to `WingletGUI`, so A
+is the confirm/advance key for edit modes (there is no B-exits-edit).
 
-When the Radio Tuner closes (Back key or explicit stop):
-1. rtl_fm and aplay subprocesses killed
-2. `QtConcurrent::run` → `systemctl start dump1090`
-3. ADSBReceiver reconnects automatically once port 30003 is available
+Original design below:
+**Interaction model** — matches the platform convention (ScrollableMenu/SelectorBox:
+Up/Down navigate, A select, B back). The screen is a vertical control stack:
 
-#### 6d — Audio pipeline
-Two `QProcess` objects piped together via `setStandardOutputProcess()`:
+- **Up / Down** — move the selection highlight between rows.
+- **A** — activate the selected row: cycle its value (Band), enter edit mode
+  (Frequency, Volume, Squelch), tune it (preset rows), or open a screen
+  (All Presets…, Save Preset).
+- **In edit mode** — Up/Down adjust the value live; on Frequency, A advances the
+  digit cursor left→right and exits edit after the last digit; on Volume/Squelch,
+  A confirms. B exits edit mode without leaving the screen.
+- **B** (outside edit mode) — close the tuner, stop the pipeline (existing behavior).
+
+**Layout (480×480 centered content, circular display safe area, StatusBar on top):**
 
 ```
-rtl_fm [opts] -  →  aplay -r 48000 -f S16_LE -t raw -c 1
+        ╭──────────────────────────────╮
+        │         RADIO TUNER          │  title
+        │                              │
+        │    Band       ‹ AIRBAND ›    │  A cycles FM / AIRBAND / 2M
+        │                              │
+        │      ┌─┐┌─┐┌─┐ ┌─┐┌─┐┌─┐     │  frequency digit cells (large,
+        │      │1││1││8│.│3││0││0│     │  reuse v1 spinbox styling);
+        │      └─┘└─┘└─┘ └─┘└─┘└─┘     │  cursor under active digit
+        │             MHz    ▲         │  in edit mode
+        │                              │
+        │    KTUS TWR       118.300    │  preset rows: favorites first,
+        │    KTUS ATIS      123.800    │  then NASR nearby (airband);
+        │    All Presets…              │  A on a row = tune it
+        │                              │
+        │    Volume   ▮▮▮▮▮▮▮▯▯▯  70%  │  A = edit, Up/Down = ±5
+        │    Squelch  ▮▮▮▯▯▯▯▯▯▯  60   │  hidden in FM mode
+        │    ★ Save Preset             │  opens 6j save flow
+        │                              │
+        │      ● LIVE      RTL #1      │  status: LIVE / STARTING /
+        ╰──────────────────────────────╯  NO DONGLE / squelched
 ```
 
-| Band | Mode | rtl_fm flags |
-|---|---|---|
-| Airband AM (118–137 MHz) | `-M am`   | `-s 200k -r 48000` |
-| FM broadcast (87.5–108 MHz) | `-M wbfm` | `-s 200k -r 48000` |
-| 2m amateur (144–148 MHz) | `-M nfm`  | `-s 200k -r 48000` |
+- Preset rows show 2–3 entries and scroll within the row region as the selection
+  moves; airband labels come from NASR (`ident + freqType`), FM/2m from favorites.
+- The wheel (if present / BT keyboard arrows) keeps adjusting volume directly, as
+  in v1. Return remains a shortcut for A. Nothing *requires* them.
+- Status line states: `● LIVE` (pipeline up), `○ STARTING`, `✕ NO DONGLE`
+  (rtl_fm exited / <2 dongles — window auto-closes as today), plus the tuned
+  dongle index for debugging.
 
-Squelch (`-l`) defaults: AM=60, NFM=50, WFM=0 (FM broadcast is always open).
-Configurable from UI.
+**Volume that works on every output:** v1's `setVolume` shells out to
+`amixer sset Master/PCM/Headphone`, which only affects the 3.5 mm jack (vc4hdmi
+has no volume control; Bluetooth ignores it too). Fix: wrap `pcm.!default` in an
+ALSA `softvol` plugin (control name `Radio`, control card pinned to the always-
+present `Headphones` card) in **all three** generated `/etc/asound.conf` variants
+(`WingletGUI::writeAudioOutputConf`), and change `setVolume` to
+`amixer sset Radio N%`. Uniform software volume on jack/HDMI/Bluetooth; headphone
+AVRCP buttons still work on top of it.
 
-#### 6e — Qt UI: RadioTuner window
-**New files:** `winglet-ui/window/radiotuner.h/.cpp`
+#### 6j — Preset browser + save-preset flow ✓ CODE COMPLETE (2026-07-05, awaiting on-device verification)
+As built: `winglet-ui/model/radiopresetsmodel.{h,cpp}` (two-level, PairedBt
+pattern) drives a `SelectorBox` opened from the tuner's "All Presets…" row;
+favorite rows offer Tune/Rename/Delete, NASR rows Tune/Add to Favorites. The
+tuner reads the chosen action back on `showEvent` (return-state, like
+`SettingsMenu`); Rename/Save use the CircularKeyboard, save ends in a brief
+"Preset saved" MessageBox.
 
-State machine:
+Original design below:
+**Preset browser** — reuse `SelectorBox` with a new two-level model
+`winglet-ui/model/radiopresetsmodel.{h,cpp}` (same pattern as
+`PairedBtDevicesModel`): root rows are presets, child rows are actions.
+
 ```
-IDLE → STOPPING_ADSB → STARTING_RF → PLAYING → STOPPING_RF → STARTING_ADSB → IDLE
+              ╭  Presets — AIRBAND  ╮
+              │ ★ Guard     121.500 │   favorites (user store, this band)
+              │ ★ Home CTAF 122.800 │
+              │ KTUS TWR    118.300 │   nearby (NASR, distance-sorted,
+              │ KTUS ATIS   123.800 │   airband only, "2.1 nm" detail line)
+              │ KRYN CTAF   125.250 │
+              ╰      ...scroll      ╯
+   selecting a row → child actions:
+     [Tune]  [Add to Favorites]          (NASR rows)
+     [Tune]  [Rename]  [Delete]          (favorite rows)
 ```
 
-UI layout (480×480 content area):
+- Opened from the tuner's "All Presets…" row; band follows the tuner's band.
+- `Tune` closes the browser and retunes (tuner reads the result on `showEvent`,
+  same return-state pattern `SettingsMenu` uses for the BT selector).
+- `Rename` uses the CircularKeyboard; `Delete` prompts nothing (single child
+  action, consistent with WiFi "Forget Network").
+
+**Save-preset flow** — from the tuner's `★ Save Preset` row:
+
 ```
-┌──────────────────────────────────┐
-│  [AM]  [FM]  [2m]               │  ← band selector, A key cycles
-│                                  │
-│        121.500 MHz               │  ← large frequency display
-│                                  │
-│  ▲  Guard         121.500        │
-│  ►  Local Tower   118.300        │  ← preset list (from frequencies.json)
-│     ATIS          133.000        │
-│     Approach      119.100        │
-│                                  │
-│  [Starting...] / [Live] / [Err]  │  ← status line
-└──────────────────────────────────┘
+   CircularKeyboard (existing widget)
+   Title:  "Save Preset"
+   Prompt: "Name for 118.300 MHz (Airband):"
+   Prefill: "118.300"        max length ~16 (menu column width)
+   entryComplete → RadioPresets::add() → brief "Preset saved" MessageBox
 ```
 
-Key map:
-| Key | Action |
+#### 6k — Band scan (optional stretch)
+rtl_fm natively scans multiple frequencies with squelch: pass repeated `-f` args
+(all favorites + nearby) or a range (`-f 118M:137M:25k -l 60`) and it parks on
+the first active carrier. Limitation: rtl_fm does not report *which* frequency
+broke squelch (audio-only stdout), so the UI can only show `SCANNING…` without a
+live readout; any key stops the scan and returns to the last manual frequency.
+Airband + 2m only (needs squelch). Defer unless it earns its keep.
+
+#### New / modified files (6f–6k)
+| File | Change |
 |---|---|
-| Up / Down | Scroll preset list |
-| A | Tune to selected preset (cycles band if on header row) |
-| B | Stop radio, restart dump1090, close window |
+| `winglet-ui/worker/rtlfmworker.{h,cpp}` | `MODE_HAM2M`, squelch, per-mode flags, restart debounce |
+| `winglet-ui/worker/radiopresets.{h,cpp}` | **new** — user preset JSON store |
+| `winglet-ui/model/radiopresetsmodel.{h,cpp}` | **new** — two-level browser model |
+| `winglet-ui/window/canardboard.{h,cpp}` | v2 control-stack layout + interaction |
+| `winglet-ui/settings/appsettings.h` | `canardLastHam2mFreq/Preset`, `canardSquelchAm/Nfm` |
+| `wingletgui.{h,cpp}` | own `RadioPresets`; softvol wrapper in `writeAudioOutputConf` |
+| `aeroscan-gui.pro` | add new sources |
+| `board/*/overlay/usr/share/aeroscan-gui/frequencies.json` | **new** — seed presets |
 
-Persistent settings (already in `AppSettings`): `canardLastAirbandFreq`,
-`canardLastFmFreq`, `canardLastAirbandPreset`, `canardLastFmPreset`. Add
-`lastHam2mFreq` and `lastHam2mPreset` for 2m band.
+#### Verification checklist (on hardware)
+- FM: local broadcast station, clean audio, volume row works on jack, HDMI, and
+  Bluetooth headphones (softvol).
+- Airband: local TWR/ATIS audible; squelch 60 silences noise floor but passes
+  voice; NASR rows show correct ident/type/distance.
+- 2m: 146.520 receives a test carrier from an HT; squelch 50 behaves; APRS
+  packets audible on 144.390 (raw bursts — decode is Phase 11).
+- Presets: save from tuner, appears in browser + tuner rows, tunes, renames,
+  deletes; survives reboot; seed file imports on first boot.
+- Whole flow with **touch only** (no BT keyboard): band change, digit edit,
+  preset tune, volume, squelch, save.
+- Dongle pulled mid-play: window closes, no orphan rtl_fm/aplay (check `ps`).
+- No NASR data: tuner shows "Settings > Update Radio Data" hint (existing v1
+  behavior preserved).
 
-#### Open questions (resolve on hardware)
-- Which ALSA device does `aplay` default to? May need `-D hw:0,0` for 3.5mm jack or
-  `-D hw:1,0` for HDMI audio. Verify with `aplay -l` on target.
-- Optimal squelch levels for local RF environment — tune on site.
-- If ADS-B gap during radio use is unacceptable, second RTL-SDR dongle eliminates
-  the handoff entirely (dump1090 pinned to `--device-index 0`, rtl_fm to `-d 1`).
-
-**Deliverable:** Radio Tuner screen receives FM broadcast, airband AM, and 2m amateur
-NFM; presets load from JSON file; ADS-B restores cleanly on exit.
+**Deliverable:** Radio Tuner receives FM broadcast, airband AM, and 2m NFM with
+per-band squelch; favorites persist in JSON; NASR nearby presets for airband;
+fully operable from the four touch zones; volume works on all audio outputs.
 
 ---
 
@@ -418,7 +576,7 @@ from main menu. `DroneReceiver` thread running. No drone data visible yet.
 - Confirm `WifiMonitor` worker connects to `wpa_cli` socket (path may differ on RPi)
 - Test network scan and connect from Settings → WiFi menu
 - Verify dump1090 map tile download works over WiFi
-- Verify `frequencies.json` can be updated over WiFi (Phase 6 dependency)
+- Verify Settings → Update Radio Data (NASR download) works over WiFi (Phase 6 dependency)
 
 **Deliverable:** WiFi connects from settings UI; online map tiles load.
 
@@ -505,12 +663,13 @@ This phase extends Phase 6 by adding actual packet decoding on top of the receiv
 **USB load on RPi 2 with full drone stack:**
 ```
 4x USB 2.0 ports:
-├── RTL-SDR dongle        (ADS-B 1090 MHz / software radio, time-shared)
+├── RTL-SDR dongle #0     (ADS-B 1090 MHz, dump1090)
+├── RTL-SDR dongle #1     (software radio, rtl_fm — Phase 6)
 ├── Alfa AWUS036N         (WiFi monitor mode, drone Remote ID)
-├── USB-UART adapter      (u-blox NEO-6M GPS)
-└── USB Bluetooth dongle  (BLE drone Remote ID)
+└── USB-UART adapter      (u-blox NEO-6M GPS)
 ```
-Powered USB hub required. WiFi dongle moves to hub port 5.
+Powered USB hub required. USB Bluetooth dongle (BLE drone Remote ID) and WiFi
+dongle move to the hub.
 
 **Deliverable:** Nearby drones visible on radar with correct icons distinct from aircraft;
 DroneBoard shows live list with distance, altitude, heading, method, and RSSI.
@@ -709,14 +868,15 @@ Phase 7 stubs. Phase 13 requires Phase 12.
 
 | Peripheral | RPi 2 port | Notes |
 |---|---|---|
-| RTL-SDR dongle | USB 2.0 | ADS-B 1090 MHz; time-shared with software radio (Phase 6) |
+| RTL-SDR dongle #0 | USB 2.0 | ADS-B 1090 MHz (dump1090, device index 0) |
+| RTL-SDR dongle #1 | USB 2.0 | Software radio (rtl_fm -d 1, Phase 6); tuner grayed out if absent |
 | Alfa AWUS036N | USB 2.0 | WiFi monitor mode for drone detection (Phase 12) |
 | USB-UART (GPS) | USB 2.0 | u-blox NEO-6M GPS receiver |
-| USB BT dongle | USB 2.0 | BLE drone Remote ID (Phase 12) |
+| USB BT dongle | USB hub | BLE drone Remote ID (Phase 12) |
 | USB WiFi dongle | USB hub | General connectivity (wlan0); moves to hub at Phase 12 |
 
-The RPi 2 has 4x USB 2.0 ports. Full Phase 12 load (5 USB devices) requires a powered hub.
-Phases 0–11 (pre-drone) require at most 3 USB devices and fit without a hub.
+The RPi 2 has 4x USB 2.0 ports. Full Phase 12 load (6 USB devices) requires a powered hub.
+Phases 0–11 (pre-drone) need at most 4 USB devices and fit without a hub.
 
 **Audio output:** RPi 2 BCM2835 onboard audio via 3.5mm jack (headphones). HDMI audio
 is also available. ALSA device selection for the Radio Tuner must be verified on target
@@ -726,18 +886,23 @@ hardware (`aplay -l` to enumerate devices).
 
 ## Frequency Database
 
-Preset frequencies for the Radio Tuner are stored in
-`/usr/share/aeroscan-gui/frequencies.json`, installed via the Buildroot overlay and
-updatable over WiFi without reflashing.
+**Airband (as built):** live FAA NASR 28-day subscription data (free, machine-readable
+CSV), downloaded on-device via Settings → Update Radio Data to
+`/var/lib/aeroscan/apt_freq.csv`. Fields used: facility identifier, frequency, use
+(tower, CTAF, ground, ATIS, etc.). The tuner queries airports within 20 nm of the
+GPS position (`NASRDatabase::queryNearby`).
 
-**Airband source:** FAA NASR 28-day subscription data (free, machine-readable CSV).
-Fields used: facility identifier, frequency, use (tower, ATIS, approach, departure, etc.).
+**User presets (Phase 6h):** stored in `/var/lib/aeroscan/radio_presets.json`
+(writable, survives reflash). The image ships seed defaults at
+`/usr/share/aeroscan-gui/frequencies.json` (Buildroot overlay), imported on first
+run: Guard 121.500, 2m Calling 146.520, APRS 144.390.
 
-**2m amateur source:** RepeaterBook API (free, public JSON) for local repeaters;
-national simplex and APRS frequencies are constants.
+**2m amateur repeaters (future):** RepeaterBook API (free, public JSON) for local
+repeaters could populate presets automatically; national simplex and APRS
+frequencies are shipped as seed constants.
 
-**FM broadcast:** User-defined. No authoritative machine-readable source for all
-local FM stations; populate manually or leave blank for user entry.
+**FM broadcast:** User-defined presets only. No authoritative machine-readable
+source for local FM stations; save from the tuner's Save Preset flow.
 
 ---
 

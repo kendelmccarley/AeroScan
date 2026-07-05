@@ -4,6 +4,8 @@
 
 namespace WingletUI {
 
+#define RESTART_DEBOUNCE_MS 300
+
 RtlFmWorker::RtlFmWorker(QObject *parent)
     : QObject(parent)
 {
@@ -11,6 +13,11 @@ RtlFmWorker::RtlFmWorker(QObject *parent)
     m_pollTimer->setInterval(3000);
     connect(m_pollTimer, &QTimer::timeout, this, &RtlFmWorker::pollAvailability);
     m_pollTimer->start();
+
+    m_restartTimer = new QTimer(this);
+    m_restartTimer->setInterval(RESTART_DEBOUNCE_MS);
+    m_restartTimer->setSingleShot(true);
+    connect(m_restartTimer, &QTimer::timeout, this, &RtlFmWorker::restartTimerFired);
 
     // Check immediately so the menu item reflects state at startup
     pollAvailability();
@@ -23,27 +30,61 @@ RtlFmWorker::~RtlFmWorker()
 
 void RtlFmWorker::tune(uint32_t freqScaled, Mode mode)
 {
+    if (m_freq == freqScaled && m_mode == mode && m_playing)
+        return;
     m_freq = freqScaled;
     m_mode = mode;
-    if (m_available) {
-        stopPipeline();
-        startPipeline();
-    }
+    scheduleRestart();
+}
+
+void RtlFmWorker::setSquelch(int level)
+{
+    level = qBound(0, level, SQUELCH_MAX);
+    if (m_squelch == level)
+        return;
+    m_squelch = level;
+    // FM broadcast runs squelch-open; no need to bounce the pipeline
+    if (m_mode != MODE_FM)
+        scheduleRestart();
+}
+
+void RtlFmWorker::scheduleRestart()
+{
+    if (m_available)
+        m_restartTimer->start();  // Restarts the window while keys repeat
+}
+
+void RtlFmWorker::restartTimerFired()
+{
+    if (!m_available)
+        return;
+    stopPipeline();
+    startPipeline();
 }
 
 void RtlFmWorker::setVolume(int pct)
 {
     m_volume = qBound(0, pct, 100);
-    // Best-effort: try common ALSA mixer control names
+    // The ALSA "default" device wraps every output route in a softvol plugin
+    // whose control is named "Radio" (see WingletGUI::writeAudioOutputConf), so
+    // one command adjusts volume uniformly on the jack, HDMI, and Bluetooth.
+    // Fall back to the raw card controls if softvol isn't present.
     QString volStr = QString::number(m_volume) + "%";
+    // The softvol "Radio" control is registered on the always-present
+    // Headphones card, so target it there explicitly — for the Bluetooth route
+    // the default ctl is bluealsa and wouldn't expose it. Fall back to the raw
+    // card controls if softvol isn't loaded.
     QProcess::startDetached("sh", {"-c",
-        QString("amixer sset Master %1 quiet 2>/dev/null || "
+        QString("amixer -c Headphones sset Radio %1 quiet 2>/dev/null || "
+                "amixer sset Radio %1 quiet 2>/dev/null || "
+                "amixer sset Master %1 quiet 2>/dev/null || "
                 "amixer sset PCM %1 quiet 2>/dev/null || "
                 "amixer sset Headphone %1 quiet 2>/dev/null").arg(volStr)});
 }
 
 void RtlFmWorker::stop()
 {
+    m_restartTimer->stop();  // Cancel any pending debounced restart
     stopPipeline();
 }
 
@@ -60,8 +101,10 @@ void RtlFmWorker::pollAvailability()
     bool nowAvailable = (countRtlSdrDevices() >= 2);
     if (nowAvailable != m_available) {
         m_available = nowAvailable;
-        if (!m_available)
+        if (!m_available) {
+            m_restartTimer->stop();
             stopPipeline();
+        }
         emit availabilityChanged(m_available);
     }
 }
@@ -87,10 +130,14 @@ void RtlFmWorker::startPipeline()
         freqHz     = (uint32_t)m_freq * 100000u;
         modeArg    = "wbfm";
         sampleRate = "170000";
-    } else {
+    } else if (m_mode == MODE_AIRBAND) {
         freqHz     = (uint32_t)m_freq * 1000u;
         modeArg    = "am";
         sampleRate = "200000";
+    } else {  // MODE_HAM2M — narrowband FM ("fm" = NBFM in rtl_fm terms)
+        freqHz     = (uint32_t)m_freq * 1000u;
+        modeArg    = "fm";
+        sampleRate = "12000";
     }
 
     // Two QProcess instances connected via stdout→stdin pipe.
@@ -98,19 +145,23 @@ void RtlFmWorker::startPipeline()
     m_aplay = new QProcess(this);
     m_aplay->start("aplay", {"-r", "48000", "-f", "S16_LE", "-t", "raw", "-c", "1", "-"});
 
-    m_rtlFm = new QProcess(this);
-    m_rtlFm->setStandardOutputProcess(m_aplay);
-    connect(m_rtlFm, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &RtlFmWorker::rtlFmFinished);
-    m_rtlFm->start("rtl_fm", {
+    QStringList rtlFmArgs = {
         "-d", "1",
         "-f", QString::number(freqHz),
         "-M", modeArg,
         "-s", sampleRate,
         "-r", "48000",
         "-g", "20",
-        "-"
-    });
+    };
+    if (m_mode != MODE_FM && m_squelch > 0)
+        rtlFmArgs << "-l" << QString::number(m_squelch);
+    rtlFmArgs << "-";
+
+    m_rtlFm = new QProcess(this);
+    m_rtlFm->setStandardOutputProcess(m_aplay);
+    connect(m_rtlFm, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &RtlFmWorker::rtlFmFinished);
+    m_rtlFm->start("rtl_fm", rtlFmArgs);
 
     m_playing = true;
     setVolume(m_volume);

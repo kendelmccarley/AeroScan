@@ -8,6 +8,8 @@
 #include <QDBusMetaType>
 #include <QDBusVariant>
 #include <QRandomGenerator>
+#include <QTimer>
+#include <QDateTime>
 
 namespace WingletUI {
 
@@ -22,8 +24,20 @@ namespace WingletUI {
 #define HID_UUID "00001124-0000-1000-8000-00805f9b34fb"
 #define HOG_UUID "00001812-0000-1000-8000-00805f9b34fb"
 
+// Bluetooth SIG service UUIDs for audio outputs: A2DP Audio Sink plus the
+// legacy headset/handsfree profiles (some headsets only advertise those)
+#define A2DP_SINK_UUID "0000110b-0000-1000-8000-00805f9b34fb"
+#define HSP_HS_UUID "00001108-0000-1000-8000-00805f9b34fb"
+#define HFP_HF_UUID "0000111e-0000-1000-8000-00805f9b34fb"
+
 #define PAIR_TIMEOUT_MS 90000
 #define CONNECT_TIMEOUT_MS 30000
+
+// Auto-reconnect cadence for paired audio devices, and the minimum spacing
+// between Connect() attempts for the same device (a failed attempt to an
+// out-of-range headset can take a while to time out inside bluetoothd).
+#define RECONNECT_TICK_MS 20000
+#define RECONNECT_MIN_INTERVAL_MS 15000
 
 // ---------------------------------------------------------------------------
 // BtPairingAgent — org.bluez.Agent1
@@ -116,6 +130,14 @@ BluetoothMonitor::BluetoothMonitor(QThread *ownerThread)
     connect(this, SIGNAL(doConnectDevice(QString)), this, SLOT(connectDeviceInThread(QString)));
     connect(this, SIGNAL(doRemoveDevice(QString)), this, SLOT(removeDeviceInThread(QString)));
 
+    // Periodic backstop for reconnecting paired audio devices. Created here but
+    // started on the worker thread (queued) so its timer lives in that event
+    // loop, since `this` was just moved there.
+    reconnectTimer = new QTimer(this);
+    reconnectTimer->setInterval(RECONNECT_TICK_MS);
+    connect(reconnectTimer, SIGNAL(timeout()), this, SLOT(reconnectTick()));
+    QMetaObject::invokeMethod(reconnectTimer, "start", Qt::QueuedConnection);
+
     QDBusConnection bus = QDBusConnection::systemBus();
     if (!bus.isConnected()) {
         qWarning("BluetoothMonitor: system D-Bus unavailable, bluetooth disabled");
@@ -189,6 +211,8 @@ void BluetoothMonitor::teardownBluez()
     adapterPowered = false;
     adapterDiscovering = false;
     deviceProps.clear();
+    reconnectInFlight.clear();
+    lastReconnectAttemptMs.clear();
 
     if (!pairingDevicePath.isEmpty())
         reportPairingResult(false, "Bluetooth service stopped");
@@ -435,6 +459,51 @@ void BluetoothMonitor::connectReplyReady(QDBusPendingCallWatcher *watcher)
         reportPairingResult(true, "");
 }
 
+void BluetoothMonitor::reconnectTick()
+{
+    maybeReconnectAudio();
+}
+
+void BluetoothMonitor::maybeReconnectAudio()
+{
+    // Only when the stack is up and idle — don't fight a scan or an in-progress
+    // user pair/connect.
+    if (!bluezAvailable || adapterPath.isEmpty() || !adapterPowered)
+        return;
+    if (!pairingDevicePath.isEmpty() || adapterDiscovering)
+        return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+    for (auto itr = deviceProps.constBegin(); itr != deviceProps.constEnd(); itr++) {
+        const QString &path = itr.key();
+        const QVariantMap &props = itr.value();
+
+        if (!props.value("Paired").toBool() || props.value("Connected").toBool())
+            continue;
+        if (!looksLikeAudio(props))
+            continue;
+        if (reconnectInFlight.contains(path))
+            continue;
+        if (lastReconnectAttemptMs.value(path, 0) + RECONNECT_MIN_INTERVAL_MS > now)
+            continue;
+
+        lastReconnectAttemptMs[path] = now;
+        // A device paired before this code shipped may not be trusted yet;
+        // trust it so bluetoothd also accepts reconnects it initiates itself.
+        if (!props.value("Trusted").toBool())
+            setDeviceProperty(path, "Trusted", true);
+
+        reconnectInFlight.insert(path);
+        auto *watcher = asyncDeviceCall(path, "Connect", CONNECT_TIMEOUT_MS);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this, path](QDBusPendingCallWatcher *w) {
+                    w->deleteLater();
+                    reconnectInFlight.remove(path);
+                });
+    }
+}
+
 void BluetoothMonitor::cancelPairingInThread()
 {
     if (pairingDevicePath.isEmpty())
@@ -532,6 +601,26 @@ bool BluetoothMonitor::looksLikeKeyboard(const QVariantMap &props)
     return false;
 }
 
+bool BluetoothMonitor::looksLikeAudio(const QVariantMap &props)
+{
+    QString icon = props.value("Icon").toString();
+    if (icon == "audio-headset" || icon == "audio-headphones" || icon == "audio-card")
+        return true;
+
+    QStringList uuids = props.value("UUIDs").toStringList();
+    if (uuids.contains(A2DP_SINK_UUID, Qt::CaseInsensitive)
+            || uuids.contains(HSP_HS_UUID, Qt::CaseInsensitive)
+            || uuids.contains(HFP_HF_UUID, Qt::CaseInsensitive))
+        return true;
+
+    // Class of Device: major class 4 (audio/video)
+    quint32 cod = props.value("Class").toUInt();
+    if (((cod >> 8) & 0x1F) == 0x04)
+        return true;
+
+    return false;
+}
+
 int BluetoothMonitor::rssiToStrength(const QVariant &rssi)
 {
     bool okay = false;
@@ -568,6 +657,7 @@ void BluetoothMonitor::publishDevices()
         info.paired = props.value("Paired").toBool();
         info.connected = props.value("Connected").toBool();
         info.isKeyboard = looksLikeKeyboard(props);
+        info.isAudio = looksLikeAudio(props);
         devices.append(info);
     }
 
@@ -577,6 +667,10 @@ void BluetoothMonitor::publishDevices()
 
     emit scanResultsChanged();
     emit pairedDevicesChanged();
+
+    // A device just appeared or changed state (e.g. headphones powered on) —
+    // try to reconnect it right away rather than waiting for the next tick.
+    maybeReconnectAudio();
 }
 
 void BluetoothMonitor::recomputeState()
@@ -607,7 +701,7 @@ void BluetoothMonitor::recomputeState()
     }
 }
 
-QList<BtDeviceInfo> BluetoothMonitor::scanResults()
+QList<BtDeviceInfo> BluetoothMonitor::scanResults(DeviceFilter filter)
 {
     m_devicesMutex.lock();
     QList<BtDeviceInfo> devices = m_devices;
@@ -615,7 +709,7 @@ QList<BtDeviceInfo> BluetoothMonitor::scanResults()
 
     QList<BtDeviceInfo> results;
     foreach (const BtDeviceInfo &device, devices) {
-        if (device.isKeyboard)
+        if (filter == FILTER_AUDIO ? device.isAudio : device.isKeyboard)
             results.append(device);
     }
 

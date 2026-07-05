@@ -28,6 +28,7 @@ AppSettings::AppSettings(QObject *parent)
 
     SettingsEntryContainer* btSettings = new SettingsEntryContainer(this, "Bluetooth");
     btSettings->addEntry(new SettingsActionEntry(this, "Pair Keyboard", ACTION_BT_SCAN));
+    btSettings->addEntry(new SettingsActionEntry(this, "Pair Headphones", ACTION_BT_SCAN_AUDIO));
     btSettings->addEntry(new SettingsActionEntry(this, "Paired Devices", ACTION_MANAGE_BT_DEVICES));
     m_settingsEntryRoot->addEntry(btSettings);
 
@@ -72,7 +73,8 @@ AppSettings::AppSettings(QObject *parent)
     SettingsEntryContainer* audioSettings = new SettingsEntryContainer(this, "Audio");
     audioSettings->addEntry(new AppSettingsEnumPropEntry(this, "audioOutput", "Audio Output", {
                                                                    {0, "Headphone Jack"},
-                                                                   {1, "HDMI"}
+                                                                   {1, "HDMI"},
+                                                                   {2, "Bluetooth"}
                                                                }));
     m_settingsEntryRoot->addEntry(audioSettings);
 

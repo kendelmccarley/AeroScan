@@ -53,6 +53,13 @@ if [ -f "${TARGET_DIR}/usr/lib/systemd/system/bluetooth.service" ]; then
         "${TARGET_DIR}/etc/systemd/system/multi-user.target.wants/bluetooth.service"
 fi
 
+# ─── BlueALSA (Bluetooth headphone audio, service file from overlay) ──────────
+if [ -f "${TARGET_DIR}/usr/bin/bluealsa" ]; then
+    mkdir -p "${TARGET_DIR}/etc/systemd/system/multi-user.target.wants"
+    ln -snf /usr/lib/systemd/system/bluealsa.service \
+        "${TARGET_DIR}/etc/systemd/system/multi-user.target.wants/bluealsa.service"
+fi
+
 chmod +x "${TARGET_DIR}/usr/sbin/aeroscan-bt-init"       2>/dev/null || true
 chmod +x "${TARGET_DIR}/usr/sbin/aeroscan-drm-init"      2>/dev/null || true
 chmod +x "${TARGET_DIR}/usr/sbin/aeroscan-display-init"  2>/dev/null || true

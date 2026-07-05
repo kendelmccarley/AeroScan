@@ -356,6 +356,7 @@ void SettingsMenu::selectorIndexSelected(QModelIndex index) {
             BtDeviceInfo result = selectedDeviceVariant.value<BtDeviceInfo>();
             selectedBtDevicePath = result.path;
             selectedBtDeviceName = result.name;
+            selectedBtDeviceIsAudio = result.isAudio;
         }
     }
     else if (actionState == ACTION_STATE_MANAGE_BT_RETURN) {
@@ -369,6 +370,7 @@ void SettingsMenu::selectorIndexSelected(QModelIndex index) {
                 // Connection is started from showEvent once the selector closes
                 selectedBtDevicePath = index.data(PairedBtDevicesModel::DevicePathRole).toString();
                 selectedBtDeviceName = index.data(PairedBtDevicesModel::DeviceNameRole).toString();
+                selectedBtDeviceIsAudio = index.data(PairedBtDevicesModel::DeviceIsAudioRole).toBool();
             }
         }
     }
@@ -511,7 +513,8 @@ void SettingsMenu::menuItemSelected(QModelIndex index)
                 WingletGUI::inst->addWidgetOnTop(selector);
                 return;
             }
-            case AppSettings::ACTION_BT_SCAN: {
+            case AppSettings::ACTION_BT_SCAN:
+            case AppSettings::ACTION_BT_SCAN_AUDIO: {
                 if (WingletGUI::inst->btMon->btState() == BluetoothMonitor::BT_OFF) {
                     WingletGUI::inst->showMessageBox(
                         "Bluetooth is not available. Check that the system has finished booting.",
@@ -520,7 +523,9 @@ void SettingsMenu::menuItemSelected(QModelIndex index)
                 }
                 selectedBtDevicePath = "";  // Clear variables before entering selector
                 selectedBtDeviceName = "";
-                auto model = new BtScanModel();
+                selectedBtDeviceIsAudio = (actionEntry->action() == AppSettings::ACTION_BT_SCAN_AUDIO);
+                auto model = new BtScanModel(selectedBtDeviceIsAudio ? BluetoothMonitor::FILTER_AUDIO
+                                                                     : BluetoothMonitor::FILTER_KEYBOARDS);
                 actionState = ACTION_STATE_BT_SCAN_RETURN;
                 auto selector = new SelectorBox(WingletGUI::inst, model, true);
                 selector->menuWidget->setShrinkOnSelect(false);
@@ -608,11 +613,14 @@ void SettingsMenu::startBtPairing()
 {
     actionState = ACTION_STATE_BT_PAIRING;
     btPairingDone = false;
+    btPairingIsAudio = selectedBtDeviceIsAudio;
 
     auto msgbox = new MessageBox(WingletGUI::inst);
     msgbox->setTitleText("Bluetooth Pairing");
-    msgbox->setMessageText(QString("Connecting to:\n%1\n\nMake sure the keyboard is in pairing mode.")
-                               .arg(selectedBtDeviceName));
+    msgbox->setMessageText(QString("Connecting to:\n%1\n\n%2")
+                               .arg(selectedBtDeviceName,
+                                    btPairingIsAudio ? "Make sure the headphones are in pairing mode."
+                                                     : "Make sure the keyboard is in pairing mode."));
     msgbox->setSingleButtonWithText("Cancel");
     btPairingMsgbox = msgbox;
     WingletGUI::inst->addWidgetOnTop(msgbox);
@@ -641,7 +649,12 @@ void SettingsMenu::btPairingComplete(bool success, QString errorMessage)
 
     if (success) {
         btPairingMsgbox->setTitleText("Pairing Complete");
-        btPairingMsgbox->setMessageText("Keyboard connected!\nIt will reconnect automatically from now on.");
+        if (btPairingIsAudio)
+            btPairingMsgbox->setMessageText("Headphones connected!\n"
+                                            "Select Bluetooth in Settings -> Audio to route sound to them.\n"
+                                            "They will reconnect automatically from now on.");
+        else
+            btPairingMsgbox->setMessageText("Keyboard connected!\nIt will reconnect automatically from now on.");
     }
     else {
         btPairingMsgbox->setTitleText("Pairing Failed");

@@ -114,6 +114,14 @@ BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
 BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y
 BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y
 BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HOG=y
+# AUDIO plugin: A2DP/AVRCP profiles in bluetoothd (also selected by bluez-alsa)
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_AUDIO=y
+# bluez-alsa: Bluetooth headphone audio without PulseAudio. Ships the
+# "bluealsa" daemon (run as A2DP source by bluealsa.service in the overlay)
+# plus an ALSA PCM plugin; aeroscan-gui points /etc/asound.conf at it when
+# Settings -> Audio -> Bluetooth is selected. Headphone volume buttons work
+# through AVRCP absolute volume — no host-side mixer involved.
+BR2_PACKAGE_BLUEZ_ALSA=y
 
 # ─── Networking ───────────────────────────────────────────────────────────────
 BR2_PACKAGE_LINUX_FIRMWARE=y

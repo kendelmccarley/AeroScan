@@ -120,6 +120,11 @@ const WingletUI::AppMenuItem mainMenuList[] = {
         .type = APP_FLIGHT_LIST
     },
     {
+        .title = "Radio Tuner",
+        .submenu = NULL,
+        .type = APP_CANARD,
+    },
+    {
         .title = "Credits",
         .submenu = NULL,
         .type = APP_CREDITS,
@@ -134,12 +139,11 @@ const WingletUI::AppMenuItem mainMenuList[] = {
         .submenu = powerMenuList,
         .numChildren = sizeof(powerMenuList) / sizeof(*powerMenuList),
     },
-    {
-        .title = "Radio Tuner",
-        .submenu = NULL,
-        .type = APP_CANARD,
-    }
 };
+
+// Top-level index of the Radio Tuner entry above; hidden until a second
+// RTL-SDR dongle is present (see MainMenu::canardConnectionChanged).
+static const int RADIO_TUNER_MENU_INDEX = 4;
 
 const WingletUI::AppMenuItem mainMenu {
     .title = "Main Menu",
@@ -167,8 +171,9 @@ MainMenu::MainMenu(QWidget *parent)
     connect(menuWidget, SIGNAL(startingHideAnimation(unsigned int)), this, SLOT(menuBeginningHide(unsigned int)));
     connect(menuWidget, SIGNAL(startingShowAnimation(unsigned int)), this, SLOT(menuBeginningShow(unsigned int)));
 
-    // Gray out Radio Tuner when second RTL-SDR isn't plugged in
-    menuModel->disableLastMainEntry(!WingletGUI::inst->rtlFm->isAvailable());
+    // Hide Radio Tuner when the second RTL-SDR isn't plugged in
+    menuModel->setHiddenMainEntry(WingletGUI::inst->rtlFm->isAvailable()
+                                  ? -1 : RADIO_TUNER_MENU_INDEX);
     connect(WingletGUI::inst->rtlFm, &WingletUI::RtlFmWorker::availabilityChanged,
             this, &MainMenu::canardConnectionChanged);
 
@@ -269,9 +274,11 @@ void MainMenu::focusInEvent(QFocusEvent* ev)
 }
 
 void MainMenu::canardConnectionChanged(bool connected) {
-    menuModel->disableLastMainEntry(!connected);
+    menuModel->setHiddenMainEntry(connected ? -1 : RADIO_TUNER_MENU_INDEX);
     if (connected && isVisible() && !menuWidget->currentEntry().parent().isValid()) {
-        menuWidget->setCurrentIndex(menuModel->rowCount() - 1);
+        // With the dongle present nothing is hidden, so the visible row equals
+        // the array index of the Radio Tuner entry.
+        menuWidget->setCurrentIndex(RADIO_TUNER_MENU_INDEX);
     }
 }
 

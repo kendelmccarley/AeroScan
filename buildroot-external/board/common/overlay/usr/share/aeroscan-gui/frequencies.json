@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "presets": [
+    {"band": "airband", "name": "Guard",      "freq_khz": 121500},
+    {"band": "ham2m",   "name": "2m Calling", "freq_khz": 146520},
+    {"band": "ham2m",   "name": "APRS",       "freq_khz": 144390}
+  ]
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=BlueALSA Bluetooth audio daemon (A2DP source)
+# Registers the A2DP source profile with bluetoothd so paired headphones can
+# attach an audio stream. The GUI's /etc/asound.conf "bluealsa" PCM talks to
+# this daemon over D-Bus (org.bluealsa).
+Requires=dbus.service
+After=dbus.service bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+ExecStart=/usr/bin/bluealsa -p a2dp-source
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

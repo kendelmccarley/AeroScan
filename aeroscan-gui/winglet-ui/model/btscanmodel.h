@@ -11,7 +11,7 @@ class BtScanModel : public QAbstractItemModel
 {
     Q_OBJECT
 public:
-    explicit BtScanModel(QObject *parent = nullptr);
+    explicit BtScanModel(BluetoothMonitor::DeviceFilter filter, QObject *parent = nullptr);
     ~BtScanModel();
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -35,6 +35,7 @@ private:
     const int refreshIntervalMs = 1000;
     bool m_updatePending = false;
 
+    BluetoothMonitor::DeviceFilter m_filter;
     QList<BtDeviceInfo> m_scanResults;
 };
 

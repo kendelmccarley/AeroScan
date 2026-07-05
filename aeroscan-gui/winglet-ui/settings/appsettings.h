@@ -45,7 +45,8 @@ public:
     DEFINE_SETTING(bool, timeFormat12hr, false, setTimeFormat12hr)
     DEFINE_SETTING(bool, sdCardMaps, false, setSdCardMaps)
 
-    // ALSA output routing: 0 = 3.5mm headphone jack, 1 = HDMI0
+    // ALSA output routing: 0 = 3.5mm headphone jack, 1 = HDMI0,
+    // 2 = Bluetooth headphones (via bluez-alsa, requires a paired audio device)
     DEFINE_SETTING(int, audioOutput, 0, setAudioOutput)
 
     // Default position: Tucson, AZ — used if GPS has never produced a fix
@@ -57,6 +58,12 @@ public:
     DEFINE_SETTING(uint, canardLastFmPreset, 1, setCanardLastFmPreset)
     DEFINE_SETTING(uint, canardLastAirbandFreq, 121500, setCanardLastAirbandFreq)
     DEFINE_SETTING(uint, canardLastAirbandPreset, 1, setCanardLastAirbandPreset)
+    // 146.520 = 2m national simplex calling frequency
+    DEFINE_SETTING(uint, canardLastHam2mFreq, 146520, setCanardLastHam2mFreq)
+    DEFINE_SETTING(uint, canardLastHam2mPreset, 1, setCanardLastHam2mPreset)
+    // rtl_fm -l squelch (linear amplitude units); FM broadcast is always open
+    DEFINE_SETTING(int, canardSquelchAm, 60, setCanardSquelchAm)
+    DEFINE_SETTING(int, canardSquelchNfm, 50, setCanardSquelchNfm)
 
 public:
     void reportGPSReading(GPSReading* reading);
@@ -69,6 +76,7 @@ public:
         ACTION_WIFI_MANUAL,
         ACTION_MANAGE_WIFI_NETWORKS,
         ACTION_BT_SCAN,
+        ACTION_BT_SCAN_AUDIO,
         ACTION_MANAGE_BT_DEVICES,
         ACTION_CLEAR_ROOT_PASSWORD,
         ACTION_RELEASE_NOTES,

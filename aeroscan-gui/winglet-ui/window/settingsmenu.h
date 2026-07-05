@@ -75,8 +75,10 @@ private:
     bool wifiScanAskPsk;
     QString selectedBtDevicePath;
     QString selectedBtDeviceName;
+    bool selectedBtDeviceIsAudio = false;
     QPointer<MessageBox> btPairingMsgbox;
     bool btPairingDone = false;
+    bool btPairingIsAudio = false;
     int selectedMsgboxBtnIdx;
     bool isCanardSettings;
 };

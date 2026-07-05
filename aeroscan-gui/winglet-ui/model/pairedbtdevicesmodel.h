@@ -19,6 +19,7 @@ public:
     // Extra roles on the action rows so the settings menu can identify the device
     static const int DevicePathRole = Qt::UserRole + 1;
     static const int DeviceNameRole = Qt::UserRole + 2;
+    static const int DeviceIsAudioRole = Qt::UserRole + 3;
 
     explicit PairedBtDevicesModel(QObject *parent = nullptr);
 

@@ -65,6 +65,9 @@ QVariant PairedBtDevicesModel::data(const QModelIndex &index, int role) const
         else if (role == DeviceNameRole) {
             return pairedDevices.at(deviceIdx).name;
         }
+        else if (role == DeviceIsAudioRole) {
+            return pairedDevices.at(deviceIdx).isAudio;
+        }
         else {
             return {};
         }

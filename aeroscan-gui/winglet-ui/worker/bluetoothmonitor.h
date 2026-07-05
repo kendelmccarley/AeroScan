@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QMap>
+#include <QSet>
 #include <QMutex>
 #include <QStringList>
 #include <QDBusConnection>
@@ -13,6 +14,7 @@
 
 class QDBusServiceWatcher;
 class QDBusPendingCallWatcher;
+class QTimer;
 
 // D-Bus compound types used by org.freedesktop.DBus.ObjectManager
 typedef QMap<QString, QVariantMap> InterfaceMap;                 // a{sa{sv}}
@@ -30,6 +32,7 @@ struct BtDeviceInfo {
     bool paired;
     bool connected;
     bool isKeyboard;
+    bool isAudio;        // A2DP-capable (headphones/headset/speaker)
 };
 
 class BluetoothMonitor;
@@ -77,8 +80,14 @@ public:
 
     BtState btState() const { return m_btState; }
 
+    // Device class filter for scan result snapshots
+    enum DeviceFilter {
+        FILTER_KEYBOARDS,
+        FILTER_AUDIO
+    };
+
     // Thread-safe snapshots for models in the GUI thread
-    QList<BtDeviceInfo> scanResults();     // Discovered keyboards (incl. paired ones, flagged)
+    QList<BtDeviceInfo> scanResults(DeviceFilter filter);  // Discovered devices (incl. paired ones, flagged)
     QList<BtDeviceInfo> pairedDevices();
 
     // Thread-safe requests (proxied onto the worker thread)
@@ -122,9 +131,16 @@ private slots:
     void removeDeviceInThread(QString devicePath);
     void pairReplyReady(QDBusPendingCallWatcher *watcher);
     void connectReplyReady(QDBusPendingCallWatcher *watcher);
+    void reconnectTick();
 
 private:
     friend class BtPairingAgent;
+
+    // Unlike HID keyboards (which re-initiate the link themselves when powered
+    // on), audio devices sit idle after a drop or reboot, so nothing brings
+    // them back. Actively Connect() trusted, paired, disconnected audio devices
+    // so paired headphones reconnect on their own. (worker thread only)
+    void maybeReconnectAudio();
 
     // Setup / teardown of the org.bluez session
     void setupBluez();
@@ -145,6 +161,7 @@ private:
     QDBusPendingCallWatcher *asyncDeviceCall(const QString &devicePath, const char *method,
                                              int timeoutMs);
     static bool looksLikeKeyboard(const QVariantMap &props);
+    static bool looksLikeAudio(const QVariantMap &props);
     static int rssiToStrength(const QVariant &rssi);
 
     QDBusServiceWatcher *bluezWatcher = nullptr;
@@ -162,6 +179,11 @@ private:
 
     // Pairing state (worker thread only)
     QString pairingDevicePath;
+
+    // Auto-reconnect bookkeeping for paired audio devices (worker thread only)
+    QTimer *reconnectTimer = nullptr;
+    QSet<QString> reconnectInFlight;               // Connect() calls pending
+    QMap<QString, qint64> lastReconnectAttemptMs;  // per-device throttle
 
     // Snapshot shared with the GUI thread
     QMutex m_devicesMutex;

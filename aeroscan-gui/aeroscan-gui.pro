@@ -23,6 +23,7 @@ SOURCES += \
     winglet-ui/model/btscanmodel.cpp \
     winglet-ui/model/knownnetworksmodel.cpp \
     winglet-ui/model/pairedbtdevicesmodel.cpp \
+    winglet-ui/model/radiopresetsmodel.cpp \
     winglet-ui/model/settingsmenumodel.cpp \
     winglet-ui/model/timezonesettingmodel.cpp \
     winglet-ui/model/wifiscanmodel.cpp \
@@ -62,6 +63,7 @@ SOURCES += \
     winglet-ui/worker/dronereceiver.cpp \
     winglet-ui/worker/gpsreceiver.cpp \
     winglet-ui/worker/nasrdatabase.cpp \
+    winglet-ui/worker/radiopresets.cpp \
     winglet-ui/worker/rtlfmworker.cpp \
     winglet-ui/worker/wifimonitor.cpp \
     wingletgui.cpp
@@ -73,6 +75,7 @@ HEADERS += \
     winglet-ui/model/btscanmodel.h \
     winglet-ui/model/knownnetworksmodel.h \
     winglet-ui/model/pairedbtdevicesmodel.h \
+    winglet-ui/model/radiopresetsmodel.h \
     winglet-ui/model/settingsmenumodel.h \
     winglet-ui/model/timezonesettingmodel.h \
     winglet-ui/model/wifiscanmodel.h \
@@ -113,6 +116,7 @@ HEADERS += \
     winglet-ui/worker/dronereceiver.h \
     winglet-ui/worker/gpsreceiver.h \
     winglet-ui/worker/nasrdatabase.h \
+    winglet-ui/worker/radiopresets.h \
     winglet-ui/worker/rtlfmworker.h \
     winglet-ui/worker/wifimonitor.h \
     winglet-ui/worker/workerthread.h \
