@@ -16,8 +16,12 @@ export QT_QPA_EGLFS_ROTATION=90
 # normalized coords, hence rotate=270:invertx:inverty (verified 2026-07-03).
 export QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/touchscreen0:rotate=270:invertx:inverty
 
-# aeroscan-display-init (run by aeroscan-gui.service) writes the detected
-# display config; it overrides the static HDMI defaults above when present.
+# aeroscan-display-init writes the detected display config (DSI preferred);
+# it overrides the static HDMI defaults above. aeroscan-gui.service runs it
+# as ExecStartPre; for manual shell starts, run it here if it hasn't run yet.
+if [ ! -f /run/aeroscan/display.env ] && [ -x /usr/sbin/aeroscan-display-init ]; then
+    /usr/sbin/aeroscan-display-init >/dev/null 2>&1 || true
+fi
 if [ -f /run/aeroscan/display.env ]; then
     set -a
     . /run/aeroscan/display.env

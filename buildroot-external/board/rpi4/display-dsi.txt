@@ -1,0 +1,19 @@
+# AeroScan display: Hosyond 5" DSI panel (800x480 landscape, FT5406 touch)
+# Selected by "include display-dsi.txt" in config.txt — the DEFAULT panel.
+# Uses the default cmdline.txt (fbcon=rotate:0 — the panel is landscape
+# native; no rotation anywhere: fbcon 0, Qt ROTATION=0 via display-init).
+#
+# BOTH lines below are required for the Hosyond clone (verified 2026-07-12);
+# each alone leaves the panel black:
+#  * display_auto_detect=1 makes the FIRMWARE probe the DSI I2C and power up
+#    the panel (rainbow splash).
+#  * dtoverlay=vc4-kms-dsi-7inch gives the KERNEL the panel/bridge/regulator
+#    nodes; this firmware's auto-detect never applies the overlay for the
+#    clone (splash only), so without forcing it there is no DSI-1 connector
+#    and the display dies at the firmware->kernel handoff.
+# The panel also needs the rpi-panel-attiny-regulator legacy-protocol kernel
+# patch (board/rpi4/linux/patches/); the clone ignores the mainline driver's
+# port-state protocol and would go black at kernel takeover without it.
+# Touch (FT5406 at i2c 0x38) comes with the overlay via the edt-ft5x06 driver.
+display_auto_detect=1
+dtoverlay=vc4-kms-dsi-7inch

@@ -358,6 +358,63 @@ def try_card(card):
     return True
 
 
+def dsi_connected():
+    import glob
+    for status in glob.glob('/sys/class/drm/card[0-9]-DSI-*/status'):
+        try:
+            with open(status) as f:
+                if f.read().strip() == 'connected':
+                    return status
+        except OSError:
+            pass
+    return None
+
+
+def dump_dsi_diag():
+    """Leave a post-mortem trail on disk for host-side analysis of the DSI
+    bringup (the panel has no working console to read while debugging)."""
+    import glob
+    try:
+        r = subprocess.run(['/bin/dmesg'], capture_output=True, text=True, timeout=10)
+        with open('/var/log/dmesg-boot.log', 'w') as f:
+            f.write(r.stdout)
+        log(f'  dmesg saved: {len(r.stdout)} bytes')
+    except Exception as e:
+        log(f'  dmesg capture failed: {type(e).__name__}: {e}')
+
+    for conn in sorted(glob.glob('/sys/class/drm/card[0-9]-*')):
+        vals = {}
+        for attr in ('status', 'enabled', 'dpms'):
+            try:
+                with open(os.path.join(conn, attr)) as f:
+                    vals[attr] = f.read().strip()
+            except OSError:
+                vals[attr] = '?'
+        log(f'  {os.path.basename(conn)}: {vals}')
+
+    bls = glob.glob('/sys/class/backlight/*')
+    if not bls:
+        log('  no backlight devices registered')
+    for bl in bls:
+        vals = {}
+        for attr in ('brightness', 'max_brightness', 'bl_power', 'actual_brightness'):
+            try:
+                with open(os.path.join(bl, attr)) as f:
+                    vals[attr] = f.read().strip()
+            except OSError:
+                vals[attr] = '?'
+        log(f'  backlight {os.path.basename(bl)}: {vals}')
+
+    if os.path.exists('/usr/sbin/aeroscan-dsidiag'):
+        try:
+            with open('/var/log/aeroscan-dsidiag.log', 'w') as f:
+                subprocess.run(['/bin/sh', '/usr/sbin/aeroscan-dsidiag'],
+                               stdout=f, stderr=subprocess.STDOUT, timeout=60)
+            log('  aeroscan-dsidiag saved to /var/log/aeroscan-dsidiag.log')
+        except Exception as e:
+            log(f'  aeroscan-dsidiag failed: {type(e).__name__}: {e}')
+
+
 def main():
     global _logfd
     try:
@@ -366,6 +423,19 @@ def main():
         pass
 
     log('aeroscan-drm-init starting')
+
+    # The PHY re-lock trick below is HDMI-specific (vc5_hdmi_phy_init PLL
+    # failure). On the DSI panel the display is already up, and cycling the
+    # output through a modeset kills vc4's DSI pipeline until reboot — the
+    # panel goes black right after the boot messages. Skip entirely.
+    dsi = dsi_connected()
+    if dsi is not None:
+        log(f'DSI panel connected ({dsi}); HDMI PHY workaround not needed')
+        dump_dsi_diag()
+        os.sync()
+        if _logfd is not None:
+            os.close(_logfd)
+        return 0
 
     try:
         dri_entries = os.listdir('/dev/dri')

@@ -49,6 +49,7 @@ BR2_LINUX_KERNEL_DTS_SUPPORT=y
 BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2711-rpi-4-b"
 BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
 BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/spi-ads7846.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/wifi-rt5370.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/kms.fragment $(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/bluetooth.fragment"
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_AEROSCAN_PATH)/board/rpi4/linux/patches"
 
 # ─── RPi firmware (GPU bootloader blobs) ─────────────────────────────────────
 # RPi4 uses EEPROM for first-stage boot — no bootcode.bin needed.
@@ -76,7 +77,9 @@ BR2_PACKAGE_LIBGPIOD=y
 BR2_PACKAGE_LIBGPIOD_TOOLS=y
 
 # ─── ADS-B + SDR radio (RTL-SDR + dump1090 + rtl_fm) ─────────────────────────
-# Two RTL-SDR dongles required: device 0 = ADS-B (dump1090), device 1 = radio tuner.
+# With two RTL-SDR dongles, device 0 = ADS-B (dump1090) and device 1 = radio
+# tuner run simultaneously. With one dongle the radio tuner hands off: opening
+# it stops dump1090 and takes device 0, and dump1090 restarts on exit.
 # rtl_fm is part of the librtlsdr package (no separate package needed).
 # aplay (for rtl_fm audio output) comes from alsa-utils.
 BR2_PACKAGE_LIBUSB=y

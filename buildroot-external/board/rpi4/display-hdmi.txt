@@ -1,0 +1,30 @@
+# AeroScan display: Waveshare 4" HDMI panel (480x800 portrait, XPT2046 touch)
+# Selected by "include display-hdmi.txt" in config.txt.
+#
+# The panel is on HDMI0 (the micro-HDMI port closest to USB-C; firmware uses
+# the :0 suffix for HDMI0). It never asserts HPD, so HDMI0 must be forced on
+# permanently — the firmware synthesizes video=HDMI-A-1:480x800M@60D on the
+# kernel cmdline from these settings, which keeps the connector enabled under
+# KMS. The panel is portrait-native: the console rotates via fbcon=rotate:3
+# (see cmdline-hdmi.txt, selected below) and the GUI via QT_QPA_EGLFS_ROTATION=90
+# (set by aeroscan-display-init when it falls back to HDMI-A-1).
+# hdmi_drive:0=2 — HDMI mode with audio (Settings → Audio → HDMI). If the
+# panel fails to sync in this mode, revert to hdmi_drive:0=1 (DVI, no audio).
+hdmi_force_hotplug:0=1
+hdmi_drive:0=2
+hdmi_group:0=2
+hdmi_mode:0=87
+hdmi_cvt:0=480 800 60 6 0 0 0
+disable_overscan:0=1
+
+# Rainbow splash experiment: if the firmware-phase output never syncs (no
+# rainbow at power-on), try explicit panel timings in place of the generic
+# CVT mode (values from the Waveshare 4" HDMI wiki):
+# hdmi_timings:0=480 0 40 10 80 800 0 13 3 32 0 0 0 60 0 32000000 3
+
+# XPT2046 resistive touch on SPI0 (part of the Waveshare panel).
+dtparam=spi=on
+dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900
+
+# Portrait-panel kernel cmdline: fbcon=rotate:3 + vc4.force_hotplug=1.
+cmdline=cmdline-hdmi.txt

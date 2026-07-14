@@ -1,0 +1,163 @@
+Subject: regulator: rpi-panel-attiny: use legacy protocol for clone panels
+
+Clone DSI panels (Hosyond etc., as shipped in AeroScan) emulate the
+original Atmel register interface (REG_POWERON/REG_PWM/0x047c timer
+poke) and ignore or misinterpret the port-state protocol this driver
+was rewritten around in 5.16, so probe() powers the panel off and
+enable() never lights it again. Replicate the pre-5.16
+panel-raspberrypi-touchscreen power-on/off sequence, track port
+states in shadow only, and log every step for bring-up debugging.
+
+--- a/drivers/regulator/rpi-panel-attiny-regulator.c
++++ b/drivers/regulator/rpi-panel-attiny-regulator.c
+@@ -65,12 +65,15 @@
+ 	/* lock to serialise overall accesses to the Atmel */
+ 	struct mutex	lock;
+ 	struct regmap	*regmap;
++	struct i2c_client *client;
+ 	bool gpio_states[NUM_GPIO];
+ 	u8 port_states[3];
+ 
+ 	struct gpio_chip gc;
+ };
+ 
++static int attiny_i2c_read(struct i2c_client *client, u8 reg, unsigned int *buf);
++
+ static const struct regmap_config attiny_regmap_config = {
+ 	.reg_bits = 8,
+ 	.val_bits = 8,
+@@ -94,24 +97,55 @@
+ {
+ 	struct attiny_lcd *state = rdev_get_drvdata(rdev);
+ 
+-	mutex_lock(&state->lock);
++	unsigned int data = 0;
++	int i, ret;
+ 
+-	/* Ensure bridge, and tp stay in reset */
+-	attiny_set_port_state(state, REG_PORTC, 0);
+-	usleep_range(5000, 10000);
++	mutex_lock(&state->lock);
+ 
+-	/* Default to the same orientation as the closed source
+-	 * firmware used for the panel.  Runtime rotation
+-	 * configuration will be supported using VC4's plane
+-	 * orientation bits.
++	/*
++	 * Replicate the pre-5.16 panel-raspberrypi-touchscreen power-on
++	 * sequence. Clone panels (Hosyond and other official-compatible
++	 * clones, as shipped in AeroScan) emulate the ORIGINAL Atmel
++	 * register interface: they honor REG_POWERON / REG_PWM / the
++	 * 0x047c timer poke, but ignore or misinterpret the REG_PORTA/B/C
++	 * port-state protocol this driver was rewritten around, leaving
++	 * the panel black. Port states are therefore only tracked in
++	 * shadow (for is_enabled() and the bridge-reset GPIO), not written
++	 * to the hardware.
+ 	 */
+-	attiny_set_port_state(state, REG_PORTA, PA_LCD_LR);
+-	usleep_range(5000, 10000);
+-	/* Main regulator on, and power to the panel (LCD_VCC_N) */
+-	attiny_set_port_state(state, REG_PORTB, PB_LCD_MAIN);
+-	usleep_range(5000, 10000);
+-	/* Bring controllers out of reset */
+-	attiny_set_port_state(state, REG_PORTC, PC_LED_EN);
++	ret = regmap_write(rdev->regmap, REG_POWERON, 1);
++	dev_info(&state->client->dev, "enable: POWERON=1 ret=%d\n", ret);
++	usleep_range(20000, 25000);
++
++	/* Wait for nPWRDWN to go low to indicate poweron is done. */
++	for (i = 0; i < 100; i++) {
++		ret = attiny_i2c_read(state->client, REG_PORTB, &data);
++		if (!ret && (data & BIT(0)))
++			break;
++	}
++	dev_info(&state->client->dev,
++		 "enable: PORTB poll i=%d ret=%d data=0x%02x\n", i, ret, data);
++
++	/* Disarm the Atmel auto-power-off timer (16-bit 0 to addr 0x047c). */
++	regmap_write(rdev->regmap, REG_ADDR_H, 0x04);
++	usleep_range(5000, 8000);
++	regmap_write(rdev->regmap, REG_ADDR_L, 0x7c);
++	usleep_range(5000, 8000);
++	regmap_write(rdev->regmap, REG_WRITE_DATA_H, 0x00);
++	usleep_range(5000, 8000);
++	regmap_write(rdev->regmap, REG_WRITE_DATA_L, 0x00);
++	msleep(10);
++
++	/* Legacy orientation select + backlight on. */
++	regmap_write(rdev->regmap, REG_PORTA, PA_LCD_LR);
++	usleep_range(5000, 8000);
++	ret = regmap_write(rdev->regmap, REG_PWM, 255);
++	dev_info(&state->client->dev, "enable: PWM=255 ret=%d\n", ret);
++
++	/* Shadow what the port-state protocol would have set. */
++	state->port_states[REG_PORTA - REG_PORTA] = PA_LCD_LR;
++	state->port_states[REG_PORTB - REG_PORTA] = PB_LCD_MAIN;
++	state->port_states[REG_PORTC - REG_PORTA] = PC_LED_EN;
+ 
+ 	msleep(80);
+ 
+@@ -126,14 +160,15 @@
+ 
+ 	mutex_lock(&state->lock);
+ 
++	/* Legacy power-off (see attiny_lcd_power_enable). */
+ 	regmap_write(rdev->regmap, REG_PWM, 0);
+ 	usleep_range(5000, 10000);
++	regmap_write(rdev->regmap, REG_POWERON, 0);
++	dev_info(&state->client->dev, "disable: POWERON=0\n");
+ 
+-	attiny_set_port_state(state, REG_PORTA, 0);
+-	usleep_range(5000, 10000);
+-	attiny_set_port_state(state, REG_PORTB, PB_LCD_VCC_N);
+-	usleep_range(5000, 10000);
+-	attiny_set_port_state(state, REG_PORTC, 0);
++	state->port_states[REG_PORTA - REG_PORTA] = 0;
++	state->port_states[REG_PORTB - REG_PORTA] = PB_LCD_VCC_N;
++	state->port_states[REG_PORTC - REG_PORTA] = 0;
+ 	msleep(30);
+ 
+ 	mutex_unlock(&state->lock);
+@@ -182,6 +217,9 @@
+ 			break;
+ 	}
+ 
++	dev_info(&state->client->dev,
++		 "update_status: PWM=%d tries=%d ret=%d\n", brightness, i, ret);
++
+ 	mutex_unlock(&state->lock);
+ 
+ 	return ret;
+@@ -212,7 +250,15 @@
+ 	else
+ 		last_val &= ~mappings[off].mask;
+ 
+-	attiny_set_port_state(state, mappings[off].reg, last_val);
++	/*
++	 * Shadow only: clone panels misinterpret port-state writes (see
++	 * attiny_lcd_power_enable). The timer poke below still goes to the
++	 * hardware.
++	 */
++	state->port_states[mappings[off].reg - REG_PORTA] = last_val;
++	dev_info(&state->client->dev,
++		 "gpio_set: off=%d val=%d port 0x%02x=0x%02x (shadow only)\n",
++		 off, val, mappings[off].reg, last_val);
+ 
+ 	if (off == RST_BRIDGE_N && val) {
+ 		usleep_range(5000, 8000);
+@@ -284,6 +330,7 @@
+ 
+ 	mutex_init(&state->lock);
+ 	i2c_set_clientdata(i2c, state);
++	state->client = i2c;
+ 
+ 	regmap = devm_regmap_init_i2c(i2c, &attiny_regmap_config);
+ 	if (IS_ERR(regmap)) {
+@@ -309,6 +356,7 @@
+ 		goto error;
+ 	}
+ 
++	dev_info(&i2c->dev, "probe: Atmel firmware id 0x%02x; POWERON=0\n", data);
+ 	regmap_write(regmap, REG_POWERON, 0);
+ 	msleep(30);
+ 	regmap_write(regmap, REG_PWM, 0);
