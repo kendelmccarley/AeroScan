@@ -1,0 +1,15 @@
+BCM4345C0.hcd — Bluetooth patch firmware for the RPi4's onboard BCM4345C0/43455.
+
+Source: https://github.com/RPi-Distro/bluez-firmware (broadcom/BCM4345C0.hcd)
+        commit 6851250bf9d51ff50e3c5b2cf2111e2419d4335b, md5 36f1b0d5cd62ac4b542b43203d9dc685
+        Identifies as "BCM43455 37.4MHz Raspberry Pi 3+-0190" build 0382.
+
+MUST be the Raspberry Pi-tuned blob, NOT the generic upstream/linux-firmware
+BCM4345C0.hcd. The generic blob (identifies as "wlbga_ref_iLNA_iTR_eLG
+[Baseline: 0143]" build 0230) lets the chip enter its own UART low-power sleep,
+which the RPi4 cannot wake it from (no BT_HOST_WAKE/BT_DEV_WAKE lines are wired
+to the SoC, so hci_bcm skips the host sleep protocol). Symptom (2026-07-14):
+Bluetooth works for the first minutes after boot, then every HCI command fails
+with "command tx timeout" (-110) until the chip is power-cycled — the GUI's
+Bluetooth pairing sits at "Searching" forever. The RPi blob keeps UART sleep
+off and matches what Raspberry Pi OS ships.
