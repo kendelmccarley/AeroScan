@@ -10,9 +10,17 @@ firmware from its custom Allwinner T113S hardware to commodity Raspberry Pi
 hardware.
 
 <p align="center">
-  <img src="docs/main-menu.png" width="640" alt="AeroScan main menu — arc menu with Radar Scope focused, brand column left, status rail right">
+  <img src="docs/main-menu.png" width="640" alt="AeroScan main menu — arc menu with Radar Scope focused, touch zones left, status rail right">
   <br>
-  <em>Main menu (design-system render of the 800×480 instrument UI)</em>
+  <em>Main menu — on-device screenshot, 800×480 DSI display</em>
+</p>
+
+<p align="center">
+  <img src="docs/map-scope.png" width="32%" alt="Map Scope — aviation chart with airspace rings and airports">
+  <img src="docs/settings-menu.png" width="32%" alt="Settings menu">
+  <img src="docs/extras-menu.png" width="32%" alt="Extras menu">
+  <br>
+  <em>Map Scope (OpenAIP airspace overlay), Settings, and Extras — captured on-device (F12 screenshot hotkey)</em>
 </p>
 
 ## Features
@@ -26,8 +34,8 @@ Bluetooth keyboard. From the main menu:
 - **Map Scope** — the same traffic overlaid on aviation chart tiles (airspace,
   airports, NAVAIDs).
 - **Flight List** — scrollable list of tracked aircraft.
-- **Radio Tuner** — multi-band RTL-SDR receiver (see below). Appears only when a
-  second RTL-SDR dongle is present.
+- **Radio Tuner** — multi-band RTL-SDR receiver (see below). Works with one
+  dongle (handing off from ADS-B) or two (alongside ADS-B).
 - **Extras** — GPS List (satellite/fix detail), GPS Tracker (position plot),
   Clock, OScope, and Media Player (legacy avBadge demo apps).
 - **Credits**, **Settings**, and **Power** (poweroff / reboot / restart UI / exit
@@ -35,8 +43,11 @@ Bluetooth keyboard. From the main menu:
 
 ### Radio tuner
 
-Runs on a dedicated second RTL-SDR dongle (device 1; device 0 stays on ADS-B, so
-there is no coverage gap). Fully operable from the four touch keys:
+Shares the RTL-SDR hardware with ADS-B. With **two dongles** it runs on device 1
+while dump1090 keeps device 0, so there is no ADS-B coverage gap. With a **single
+dongle** it hands off: opening the tuner stops dump1090 and takes the dongle, and
+returning to an ADS-B screen (Radar/Map Scope, Flight List) restarts dump1090.
+Fully operable from the four touch keys:
 
 - **Bands** — FM broadcast (87.9–107.9 MHz, wideband FM), aviation airband
   (118–137 MHz, AM), and 2 m amateur (144–148 MHz, narrowband FM).
@@ -76,11 +87,41 @@ spontaneous reboots.
 | Component | Notes |
 |---|---|
 | Raspberry Pi 4 (recommended) or Pi 2 Model B | Pi 2 needs a powered USB hub |
-| Display | Pi 4: official 7" DSI or compatible clones (auto-detected), or HDMI. Pi 2: Waveshare 800×480 HDMI + XPT2046 resistive touch (SPI) |
-| RTL-SDR USB dongle(s) | device 0 = ADS-B 1090 MHz (dump1090); a second dongle (device 1) enables the radio tuner (FM / airband / 2 m) |
+| Display | Pi 4: Hosyond 5" DSI 800×480 (official-RPi-7"-clone, capacitive touch — default) or Waveshare 4" 480×800 HDMI + XPT2046 resistive touch, selected by one line in `config.txt` (see [Display selection](#display-selection-pi-4)). Pi 2: the Waveshare HDMI panel |
+| RTL-SDR USB dongle(s) | one runs ADS-B 1090 MHz (dump1090); the radio tuner (FM / airband / 2 m) hands off from it, or uses a second dongle to run alongside ADS-B |
 | u-blox GPS receiver | NEO-6M or similar, USB serial |
 | USB WiFi dongle | RT5370 supported out of the box |
 | Bluetooth | Pi 4 uses onboard BT (Pi 2 needs a USB dongle); in-app pairing over BlueZ D-Bus for a keyboard and/or audio headphones |
+
+## Display selection (Pi 4)
+
+The Pi 4 image supports two panels. The active one is chosen by a single
+`include` line in `config.txt` on the SD card's FAT boot partition — editable
+on any computer by moving the leading `#`:
+
+```
+include display-dsi.txt      # Hosyond 5" DSI, 800×480 landscape (default)
+#include display-hdmi.txt    # Waveshare 4" HDMI, 480×800 portrait + XPT2046
+```
+
+Each `display-*.txt` carries everything its panel needs — device tree overlays,
+touch controller, and (for HDMI) the matching kernel cmdline with console
+rotation and hotplug forcing — so swapping panels requires no other edits. The
+on-device services (`aeroscan-display-init`, sourced for both the systemd unit
+and manual `aeroscan-gui` starts) detect the connected panel at runtime and set
+the Qt rotation and touch mapping to match.
+
+The Hosyond panel, like most "official-compatible" DSI clones, emulates the
+original ATTiny power-controller I2C protocol and ignores the port-state
+protocol the mainline `rpi-panel-attiny-regulator` driver switched to in
+Linux 5.16 — stock kernels leave it black at the firmware→kernel handoff, with
+no errors anywhere. The image carries a kernel patch
+(`buildroot-external/board/rpi4/linux/patches/`) restoring the legacy power-on
+sequence. Two helper scripts support display bring-up: `patch-sd-dsi.sh`
+patches a flashed card from the host without a rebuild, and
+`aeroscan-dsidiag.sh` (installed on-device as `aeroscan-dsidiag`) collects DSI
+pipeline state; `aeroscan-drm-init` also dumps display diagnostics to
+`/var/log/` on every boot.
 
 ## Building
 
@@ -100,10 +141,14 @@ make rpi4                        # configure + full build (or: make rpi2)
 Flash the result to an SD card:
 
 ```bash
-# oflag=direct + conv=fsync make dd block until data is physically on the
-# card — without them, pulling the card early silently corrupts the rootfs
-dd if=output/rpi4/images/sdcard.img of=/dev/sdX bs=4M oflag=direct conv=fsync status=progress
+./flash-sd.sh /dev/sdX          # unmounts auto-mounts, flashes, verifies
 ```
+
+(`flash-sd.sh` wraps `dd bs=4M oflag=direct conv=fsync`. Unmounting any
+desktop auto-mounted partitions first is essential — writing the raw device
+while its old partitions are mounted lets stale filesystem metadata flush
+over the fresh image and silently corrupts the rootfs — and the script
+fsck-verifies the written card before declaring success.)
 
 Useful targets (see `Makefile` for the full list):
 
@@ -163,7 +208,8 @@ Makefile                  Top-level build entry points (wraps Buildroot)
 aeroscan-gui/             Qt5 application source (radar scope, map, radio, settings, …)
 buildroot-external/       Buildroot external tree (BR2_EXTERNAL)
   configs/                aeroscan_rpi2_defconfig, aeroscan_rpi4_defconfig
-  board/rpi2/, rpi4/      config.txt, cmdline.txt, kernel fragments, rootfs
+  board/rpi2/, rpi4/      config.txt, cmdline*.txt, display-*.txt selection
+                          files, kernel fragments and patches, rootfs
                           overlays, post-build/post-image scripts
   board/common/overlay/   Shared on-device files (aeroscan-setup,
                           aeroscan-fetch-tiles, NASR updater, seed radio presets)
@@ -176,8 +222,9 @@ buildroot/, output/       (gitignored) Buildroot tree and build output
 ## Status
 
 - **Pi 2**: display + touch, Qt GUI, ADS-B working; WiFi bring-up in progress.
-- **Pi 4**: primary target. Display auto-detection (DSI preferred, HDMI
-  fallback), touch input rotation, WiFi and SSH, in-app Bluetooth pairing (BlueZ
+- **Pi 4**: primary target. Dual-display support (Hosyond DSI default /
+  Waveshare HDMI, one-line selector in config.txt, clone-panel kernel patch)
+  with per-panel touch and rotation handled at runtime, WiFi and SSH, in-app Bluetooth pairing (BlueZ
   D-Bus, passkey shown on screen) for both keyboards and audio headphones, audio
   output selection (headphone jack / HDMI / Bluetooth), and the multi-band radio
   tuner with squelch, user presets, and live FAA NASR airport frequencies. Code
