@@ -1,6 +1,6 @@
 # AeroScan Release Notes — July 2026 development snapshot
 
-> **Update (2026-07-16, post-v0.2b):** the RF mitigation worked — remoting
+> **v0.2c (2026-07-16):** the RF mitigation worked — remoting
 > the SDR receiver on a USB extension away from the display panel took the
 > site from a jammed −30 dBFS floor to −41 dBFS with 1800+ messages and
 > 150+ positions/minute; scopes now show dense live traffic. Since v0.2b:
@@ -9,7 +9,9 @@
 > fix), Remote SDR server (rtl_tcp) controlled from Settings, map/radar
 > aircraft render parity, GUI autostart, and appliance hardening
 > (crash respawn, hardware watchdog, functioning power menu, bounded
-> logs/screenshots/memory, filesystem expansion fix).
+> logs/screenshots/memory, filesystem expansion fix), and the SDR
+> self-recovery watchdog + red STALLED rail alarm — both proven live on
+> real tuner wedges the day they shipped.
 
 ## Developer hardware configuration
 
