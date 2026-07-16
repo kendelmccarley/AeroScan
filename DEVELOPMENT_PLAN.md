@@ -1,5 +1,12 @@
 # AeroScan — Development Plan
 
+> **Status snapshot (v0.2a, July 2026):** the Raspberry Pi 4 is the primary and
+> actively developed target (Phase 13 complete and substantially extended);
+> the Pi 2 target is stale. The UI has evolved past the original 160/480/160
+> layout to a 100/600/100 instrument-panel plan (see UI Layout). Current
+> hardware configuration, verified features, open RF/antenna issues, and the
+> not-yet-solid list live in [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
+
 ## Project Overview
 
 AeroScan is a port and extension of the avBadge 2024 (Winglet) project targeting Raspberry Pi
@@ -36,25 +43,30 @@ original T113S. Qt5 compiled for ARMv7 applies directly with no architecture cha
 **No onboard wireless:** The RPi 2 Model B has no onboard WiFi or Bluetooth. USB dongles are
 required for both. A powered USB hub is recommended when all USB peripherals are attached.
 
-**RTL-SDR dongles:** Two dongles, as built (the original time-share/handoff design was
-dropped — see Phase 6b). Device 0 is dedicated to dump1090 (ADS-B); device 1 to the
-software radio receiver (`rtl_fm -d 1`). The Radio Tuner menu entry grays out when
-fewer than two dongles are present; ADS-B is never interrupted.
+**RTL-SDR dongles:** both modes shipped (see Phase 6b): with two dongles, device 0
+is dump1090 (ADS-B) and device 1 the radio tuner — no coverage gap; with a single
+dongle the tuner hands off (stops dump1090, takes device 0, dump1090 restarts on
+exit). Zero dongles shows a "No RTL-SDR dongle detected" message.
 
-### Future Target (Production)
+### Primary Target — AS BUILT (v0.2a development configuration)
 | Component | Part |
 |---|---|
 | SBC | Raspberry Pi 4 Model B (BCM2711, quad-core Cortex-A72, ARMv8, 2GB+ RAM) |
-| Display (HDMI) | Any 800x480 HDMI touchscreen |
-| Display (DSI) | OSOYOO 3.5" DSI V3.0 (800x480, capacitive, ribbon connector) |
-| All other hardware | Same as initial target |
+| Display (DSI, default) | Hosyond 5" DSI 800x480 capacitive (official-RPi-7" clone; requires the bundled legacy-ATTiny kernel patch) |
+| Display (HDMI, alternate) | Waveshare 4" 480x800 HDMI + XPT2046 resistive touch |
+| SDR | RTL2832U/R820T USB stick (single-dongle handoff mode in daily use) |
+| GPS | u-blox 7 USB receiver |
+| WiFi / BT | Onboard BCM43455 (BT runs the RPi-tuned BCM4345C0.hcd — see `BCM4345C0.hcd.README`) |
 
-Both display types appear to Qt5 as an 800x480 framebuffer. RPi 4 firmware auto-detects:
-DSI panel is preferred when connected, HDMI is the fallback. No application-level display
-switching logic is needed.
+Display selection is **not** firmware auto-detect (that failed for the Hosyond
+clone): the active panel is chosen by an `include display-{dsi,hdmi}.txt` line
+in `config.txt` on the boot partition, which also swaps the matching kernel
+cmdline. Runtime pieces (`aeroscan-display-init`, Qt rotation, touch mapping)
+adapt automatically. The original OSOYOO DSI panel was never used.
 
-**Since both hardware targets use 800x480, a single UI layout serves both. The RPi 4
-migration is a Buildroot and backend change, not a layout change.**
+**Both panels are 800x480-class, so a single UI layout serves both.** The
+RPi 4 is the development machine; the RPi 2 configuration below is retained
+for reference but is stale (not exercised since the Pi 4 port).
 
 ---
 
@@ -86,8 +98,8 @@ migration is a Buildroot and backend change, not a layout change.**
 
 ### OS Layer
 - **Build system**: Buildroot 2024
-- **Initial target**: `raspberrypi2_defconfig` (ARMv7 32-bit)
-- **Future target**: `raspberrypi4_64_defconfig` (ARMv8 64-bit)
+- **Primary target**: `aeroscan_rpi4_defconfig` (ARMv8 64-bit, custom external-tree defconfig)
+- **Legacy target**: `aeroscan_rpi2_defconfig` (ARMv7 32-bit, stale)
 - **Init system**: systemd
 - **Root filesystem**: Read-only with writable `/var` overlay
 - **Qt5 backend (RPi 2)**: `linuxfb` (HDMI framebuffer `/dev/fb0`)
@@ -98,48 +110,48 @@ migration is a Buildroot and backend change, not a layout change.**
 |---|---|---|---|---|
 | RPi 2 + Waveshare XPT2046 | 800x480 | HDMI | SPI (XPT2046, resistive) | linuxfb |
 | RPi 4 + HDMI touchscreen | 800x480 | HDMI | USB HID | eglfs |
-| RPi 4 + OSOYOO DSI | 800x480 | DSI ribbon | I2C (capacitive) | eglfs |
+| RPi 4 + Hosyond 5" DSI (default) | 800x480 | DSI ribbon | I2C (FT5406 capacitive) | eglfs |
 
 All three configurations present Qt5 with an 800x480 surface. Touch input appears as
 an evdev device regardless of the touch bus. One UI layout target serves all three.
 
 ---
 
-## UI Layout — 800x480 (All Targets)
+## UI Layout — 800x480 (AS BUILT, v0.2a instrument-panel plan)
 
-**Layout** — 480x480 content area centered in the display, with 160px columns on each
-side available for status icons or future use.
+The original 160/480/160 quadrant-touch layout evolved into a three-column
+instrument panel:
 
 ```
-┌──────────────┬──────────────────────────────────┬──────────────┐
-│              │                                  │              │
-│              │     480 x 480 content area        │              │
-│  (status /   │     (radar, map, lists,           │  (status /   │
-│   future)    │      clock, settings, etc.)       │   future)    │
-│              │                                  │              │
-│              │  Touch quadrant mapping:          │              │
-│              │    upper-left  = up               │              │
-│              │    lower-left  = down             │              │
-│              │    upper-right = select           │              │
-│              │    lower-right = back             │              │
-└──────────────┴──────────────────────────────────┴──────────────┘
-    160 px                   480 px                    160 px
+┌───────────┬──────────────────────────────────────────┬───────────┐
+│ PARHELIA  │                                          │ GPS bar   │
+│ (logo,    │        600 x 480 main display            │ ADSB bar  │
+│  rotated  │                                          │ SDR stats │
+│  90° CCW) │  Legacy 480x480 screens are centered     │ (msg/pos/ │
+├───────────┤  via QStackedWidget contents margins;    │  sig/NF/  │
+│ ▲ UP      │  screens with the "fullBleedScreen"      │  drop)    │
+├───────────┤  property (MapScope, Media Player) get   │ Pi vitals │
+│ ▼ DOWN    │  the full 600px.                         │ (cpu/load/│
+├───────────┤                                          │ ram/temp/ │
+│ ● SEL     │  Center taps in the display area         │ net/disk) │
+├───────────┤  synthesize Key_A (select).              │ Date      │
+│ ◀ BACK    │                                          │ Clock     │
+└───────────┴──────────────────────────────────────────┴───────────┘
+   100 px                     600 px                       100 px
 ```
 
-Touch events on the 800x480 surface are intercepted by `WingletGUI::eventFilter()`,
-mapped to a screen quadrant, and synthesized into `QKeyEvent`s delivered to the focused
-widget. The display is rotated 90° (`display_rotate=3`) so physical touch coordinates are
-swapped relative to logical screen axes; the quadrant mapping accounts for this.
-
-| Physical corner | Logical quadrant | Qt key | Action |
-|---|---|---|---|
-| Upper-right | Upper-left | Key_A | Select / confirm |
-| Upper-left | Lower-left | Key_Up | Scroll up / navigate up |
-| Lower-right | Upper-right | Key_B | Back / cancel |
-| Lower-left | Lower-right | Key_Down | Scroll down / navigate down |
-
-Key_B is routed directly to WingletGUI rather than the focused widget to ensure back
-navigation always works regardless of which sub-screen has focus.
+- **Left column** (`TouchButtonOverlay`, Left): Parhelia wordmark in the upper
+  half; UP / DOWN / SEL / BACK touch zones in the lower half (60px each).
+  Zone taps synthesize `QKeyEvent`s; Key_B routes directly to `WingletGUI` so
+  back navigation always works regardless of focus.
+- **Right column** (`TouchButtonOverlay`, Right): live instrument rail on a
+  2-second poll — GPS/ADS-B indicator bars, dump1090 decoder statistics (from
+  `/run/dump1090/stats.json`), Pi vitals (with firmware throttle flag), date,
+  and a 24-hour clock in the GPS-derived timezone.
+- Compact status icons (WiFi/battery/date/GPS pin/three-state ADS-B airplane)
+  remain inside each screen's content area (`StatusBar`).
+- No display rotation is used on the DSI panel (landscape native); the HDMI
+  panel path applies fbcon/Qt rotation via its cmdline/display-init settings.
 
 ---
 
@@ -241,15 +253,16 @@ last-known position survives reboots.
 
 ---
 
-### Phase 6 — Software Radio Receiver ◐ IN PROGRESS
+### Phase 6 — Software Radio Receiver ✓ COMPLETE (except 6k; regression pass pending)
 **Goal:** Radio Tuner screen receives FM broadcast, aviation airband AM, and 2m amateur
 NFM on a dedicated second RTL-SDR dongle, with presets, squelch, and a UI fully
 operable from the four touch zones (no keyboard required).
 
-**Status:** The core tuner shipped ahead of this plan with a different architecture
-than originally written here — two dongles instead of a dump1090 handoff, and live
-FAA NASR data instead of a static airband JSON. Sub-phases 6a–6e below are rewritten
-as-built; 6f–6k are the remaining work.
+**Status (v0.2a):** shipped and exercised on hardware — v2 touch-first UI, presets,
+squelch, NASR airband data, and the single-dongle handoff (verified end-to-end during
+the ADS-B debugging campaign: tuner open stops dump1090, close restarts it, the GUI
+reconnects in ~8 s). Remaining: 6k (band scan, optional) and a UI regression pass on
+the new 600 px-era layout (see RELEASE_NOTES.md).
 
 | Sub-phase | Scope | Status |
 |---|---|---|
@@ -257,12 +270,12 @@ as-built; 6f–6k are the remaining work.
 | 6b | Dongle architecture (2 dongles, no handoff) | ✓ COMPLETE |
 | 6c | Audio pipeline (FM wbfm + airband AM) | ✓ COMPLETE |
 | 6d | Airband frequency data (NASR nearby query) | ✓ COMPLETE |
-| 6e | Tuner screen v1 (CanardBoard) | ✓ COMPLETE (keyboard-dependent) |
-| 6f | 2m amateur band (NFM) | ✓ CODE COMPLETE (verify on HW) |
-| 6g | Squelch | ✓ CODE COMPLETE (tune defaults on HW) |
-| 6h | User presets (favorites, JSON store) | ✓ CODE COMPLETE (verify on HW) |
-| 6i | Tuner screen v2 — touch-first layout rework | ✓ CODE COMPLETE (verify on HW) |
-| 6j | Preset browser + save-preset flow | ✓ CODE COMPLETE (verify on HW) |
+| 6e | Tuner screen v1 (CanardBoard) | ✓ COMPLETE (superseded by 6i) |
+| 6f | 2m amateur band (NFM) | ✓ COMPLETE |
+| 6g | Squelch | ✓ COMPLETE (defaults may need site tuning) |
+| 6h | User presets (favorites, JSON store) | ✓ COMPLETE |
+| 6i | Tuner screen v2 — touch-first layout rework | ✓ COMPLETE (regression pass on 600px layout pending) |
+| 6j | Preset browser + save-preset flow | ✓ COMPLETE |
 | 6k | Band scan (optional stretch) | pending |
 
 #### 6a — System prerequisites ✓ AS BUILT
@@ -526,7 +539,7 @@ fully operable from the four touch zones; volume works on all audio outputs.
 
 ---
 
-### Phase 7 — Drone Detection Stubs
+### Phase 7 — Drone Detection Stubs ✓ COMPLETE
 **Goal:** Stub infrastructure compiles cleanly; all hooks exist in relevant screens;
 no functional drone detection yet — data flows when Phase 12 services are running.
 
@@ -549,10 +562,10 @@ distance (nm), altitude (m), heading, detection method (BLE/WiFi), RSSI. Registe
 the main menu. Shows "No drones detected" until Phase 12 services are active.
 
 **`aeroscan-gui/winglet-ui/widget/touchbuttonoverlay.h/.cpp`**
-`TouchButtonOverlay` 160x480 widget that hosts three touch buttons. Two instances are
-created: left column (UP, DOWN, LEFT at x=0) and right column (RIGHT, A, B at x=640).
-Each button press posts a `QKeyEvent` to the currently focused widget, making it
-transparent to all existing screen navigation code.
+`TouchButtonOverlay` — much evolved since this phase: now the 100px-wide left
+touch column (Parhelia logo + UP/DOWN/SEL/BACK zones) and the right instrument
+rail (GPS/ADS-B bars, SDR stats, Pi vitals, date/clock). Zone presses still post
+`QKeyEvent`s to the focused widget, transparent to all screen navigation code.
 
 #### Modified files in this phase:
 
@@ -575,7 +588,7 @@ from main menu. `DroneReceiver` thread running. No drone data visible yet.
 
 ---
 
-### Phase 8 — WiFi Connectivity
+### Phase 8 — WiFi Connectivity ✓ COMPLETE (rpi4)
 **Goal:** WiFi connects automatically; managed from settings UI.
 
 - Add USB WiFi driver to Buildroot kernel config (`rt2800usb` for RT5370 or equivalent)
@@ -585,11 +598,16 @@ from main menu. `DroneReceiver` thread running. No drone data visible yet.
 - Verify dump1090 map tile download works over WiFi
 - Verify Settings → Update Radio Data (NASR download) works over WiFi (Phase 6 dependency)
 
+As built on rpi4: onboard BCM43455 (WPA3-capable wpa_supplicant), in-app scan/join
+with on-screen keyboard, saved-network management with reconnect dialog, live IP
+shown under the connected network, first-connect reliability fix, SSH access used
+throughout development.
+
 **Deliverable:** WiFi connects from settings UI; online map tiles load.
 
 ---
 
-### Phase 9 — Power & Battery
+### Phase 9 — Power & Battery ◐ PARTIAL
 **Goal:** Clean shutdown; battery status visible if UPS hardware is present.
 
 - **USB-C power only (no battery):** Disable `BattMonitor` worker; hide battery icon
@@ -599,11 +617,16 @@ from main menu. `DroneReceiver` thread running. No drone data visible yet.
 - Implement low-battery warning and `poweroff` trigger at configurable threshold
 - Implement clean shutdown on B-button hold or power key event
 
+As built so far: Power menu (poweroff / reboot / restart UI / exit to terminal)
+works; battery icon shows `?` (no telemetry — BattMonitor is effectively stubbed
+on USB-C power). UPS-hat support, low-battery handling, and hiding the icon when
+no battery hardware exists remain open.
+
 **Deliverable:** Clean shutdown; battery icon reflects charge level or is hidden.
 
 ---
 
-### Phase 10 — UI Layout Pass (800x480)
+### Phase 10 — UI Layout Pass (800x480) ✓ COMPLETE (superseded by the v0.2a instrument-panel layout)
 **Goal:** All screens visually correct in the 480x480 content area at 800x480 total window.
 
 - Audit every screen: content must fit within the 480px-wide centered content area (x=160)
@@ -616,6 +639,12 @@ from main menu. `DroneReceiver` thread running. No drone data visible yet.
 - Touch button columns: verify 160px width is sufficient for comfortable tap targets;
   button labels legible; visual style matches application theme; consider using remaining
   space in each column for status icons or telemetry readouts
+
+Superseded: the audit happened as part of the v0.2a 100/600/100 rework (see UI
+Layout above) — legacy screens are auto-centered by stack margins, MapScope and
+Media Player use the full 600 px, the left column got the Parhelia brand + 4
+compact touch zones, and the right column became the live instrument rail. The
+"remaining space for status icons or telemetry readouts" idea shipped for real.
 
 **Deliverable:** All screens correct at 800x480; sidebar buttons usable.
 
@@ -683,7 +712,7 @@ DroneBoard shows live list with distance, altitude, heading, method, and RSSI.
 
 ---
 
-### Phase 13 — RPi 4 Port
+### Phase 13 — RPi 4 Port ✓ COMPLETE (as-built differs — see below)
 **Goal:** Same application and UI runs on RPi 4 with HDMI or DSI at 800x480.
 
 Since both hardware targets share the 800x480 resolution and the centered 480x480 layout, this phase
@@ -708,12 +737,21 @@ is primarily a Buildroot configuration change — not a layout change.
 - Update `adsbReceiverThread` and other threads for aarch64 if any 32-bit assumptions exist
 - Rebuild and flash RPi 4 image
 
-**Deliverable:** RPi 4 boots with all features; HDMI and DSI auto-detected; same
-800x480 layout and behavior as RPi 2 target.
+As built (differs from the sketch above): dedicated `aeroscan_rpi4_defconfig`
+(64-bit, eglfs/KMS, kernel 6.1 RPi tree); display is **not** firmware
+auto-detected — the Hosyond DSI clone needed a forced overlay plus a
+legacy-ATTiny-protocol kernel patch (`board/rpi4/linux/patches/`), and panel
+choice is a one-line `config.txt` include (`display-dsi.txt` /
+`display-hdmi.txt`) that also swaps the kernel cmdline. Onboard BT required the
+RPi-tuned BCM4345C0.hcd (generic blob wedges into unwakeable UART sleep).
+Note: the RPi 4 port happened **before** Phase 12, out of dependency-graph
+order — drone detection now depends on it rather than the reverse.
+
+**Deliverable:** RPi 4 boots with all features. ✓
 
 ---
 
-### Phase 14 — Buildroot Image Finalization
+### Phase 14 — Buildroot Image Finalization ◐ PARTIAL
 **Goal:** Single reproducible SD card image per hardware target.
 
 - Write `post-build.sh`: set permissions, symlinks, default configs
@@ -725,11 +763,17 @@ is primarily a Buildroot configuration change — not a layout change.
   - `aeroscan-rpi4.img.gz` — RPi 4, HDMI/DSI auto-detect 800x480
 - Target: boot-to-GUI in under 20 seconds on RPi 2; under 15 seconds on RPi 4
 
+Done so far: reproducible `sdcard.img` per target with post-image assembly,
+first-boot rootfs auto-expansion, verified flashing via `flash-sd.sh`, release
+notes shipped to `/etc/release_notes`. Still open: read-only rootfs with
+writable overlay, GUI auto-start (deliberately preset-disabled during
+development — boot lands on tty1), boot-time targets unmeasured.
+
 **Deliverable:** Flashable images for both hardware targets.
 
 ---
 
-### Phase 15 — Integration Testing
+### Phase 15 — Integration Testing ◐ PARTIAL
 **Goal:** All subsystems stable under sustained concurrent load.
 
 - Full stack on RPi 2: dump1090 + gpsd + wpa_supplicant + Qt5 GUI
@@ -740,6 +784,13 @@ is primarily a Buildroot configuration change — not a layout change.
 - Thermal: 30-minute sustained run; verify no CPU throttling (heatsink recommended on RPi 2)
 - SPI touch: verify XPT2046 touch coordinates remain calibrated after thermal soak
 - Display: verify no framebuffer tearing on HDMI display under radar sweep animation
+
+Progress: the ADS-B pipeline is verified end-to-end on rpi4 (including a
+synthetic SBS feed driving a moving target across the scopes); the tuner
+handoff cycle is verified; multi-hour GUI sessions ran through the v0.2a
+debugging campaign without crashes. Blocked/open: real-traffic soak testing is
+limited by site RF interference and antenna (see RELEASE_NOTES.md); the 20+
+aircraft stress test, thermal soak, and Pi 2 runs have not happened.
 
 **Deliverable:** Stable, no crashes under normal operating conditions on both targets.
 
@@ -800,7 +851,11 @@ bool categoryValid = false;
   are dump1090-fa extensions
 - `BR2_PACKAGE_QT5NETWORK=y` must be set in the Buildroot defconfig (likely already present
   since `QT += network` is in `aeroscan-gui.pro`)
-- Port 8080 must be accessible on localhost (dump1090-fa default; configure with `--net-http-port`)
+- Port 8080 must be accessible on localhost (dump1090-fa default; configure with
+  `--net-http-port`) — **or simpler, as of v0.2a**: the service already runs with
+  `--write-json /run/dump1090`, so `aircraft.json` (which includes `category`) can
+  be read directly from `/run/dump1090/aircraft.json` with no HTTP at all; the
+  instrument rail's stats poller is the pattern to copy
 
 **Dependency:** Phase 4 (dump1090 running). Independent of all other phases.
 
@@ -811,8 +866,11 @@ from fixed-wing on radar; unknown/unset category displays gracefully as blank or
 
 ## Radar Scope — Visual Enhancement Backlog
 
-Ideas to consider for a future styling pass on `radarscope.cpp`. None are committed to a
-phase yet. Roughly ordered by visual impact.
+Ideas to consider for a future styling pass on `radarscope.cpp`. Shipped in
+v0.2a from this list's spirit: smooth atomic sweep (4.5°/50 ms — fixes the
+double-line stutter), doubled aircraft icons/labels, and stale-track dimming
+(30 s at 35 % opacity). The items below remain open, roughly ordered by
+visual impact.
 
 1. **Phosphor sweep trail** — Draw the last ~15° of sweep arc as a series of
    semi-transparent filled wedges fading from ~60% alpha to 0. The single biggest
