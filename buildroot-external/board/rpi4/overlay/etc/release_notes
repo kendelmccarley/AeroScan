@@ -1,18 +1,21 @@
-AeroScan v0.2b
-NEW: The GUI now starts automatically at boot
-(drop to a shell with: systemctl stop
-aeroscan-gui). Map Scope aircraft now match
-Radar Scope — arrow icon with callsign and
-altitude labels at the icon's 5 o'clock, 2/3
-size. The GPS rail slot shows velocity (kt)
-and altitude (ft) in fix-status colors. Radio
-tuner: a missing-FAA-database notice now leads
-the preset list (download via Settings > Radio
-Options > Update Radio Data); new Parhelia
-background watermark.
+AeroScan — July 16 update
+NEW: Radar Scope reworked as a classic phosphor
+P-scope — glowing sweep with decay trail, tube
+glow, range rings, cardinal ticks, ownship
+cross, and a fixed 240px sweep radius. GPS
+readout (top right) now shows ground speed and
+MSL altitude — an altitude bug affecting
+GPS-only receivers (u-blox 7) is fixed. Remote
+SDR server: stream a dongle to SDR++/GQRX/SDR#
+from Settings > Radio Options. Map and radar
+scopes now render aircraft identically.
 
-FINDINGS: the DSI display panel jams ADS-B
-reception. Greatly improve it by remoting the
-SDR stick on a USB extension cable and
-experimenting with antenna placement — watch
-the SDR rail's NF meter: -42 quiet, -30 jammed.
+APPLIANCE: the GUI restarts itself after any
+crash, the power menu now really powers off /
+reboots, a hardware watchdog recovers kernel
+hangs, and logs/screenshots are size-capped —
+built to run indefinitely.
+
+RF: interference was traced to the display
+panel. Remoting the SDR receiver on a USB
+extension fixed it — verified 1800+ msg/min.

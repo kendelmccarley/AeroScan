@@ -11,3 +11,6 @@ disable dump1090.service
 # rtl_tcp remote SDR server is controlled from Settings -> Radio Options;
 # the GUI runs systemctl enable/disable so the choice survives reboots.
 disable rtl-tcp.service
+# SDR watchdog runs always: detects an active-but-deaf dump1090 (wedged
+# R820T PLL / USB power sag) and recovers it automatically.
+enable aeroscan-sdr-watchdog.service

@@ -23,8 +23,9 @@ hardware.
   <img src="docs/radio-tuner.png" width="49%" alt="Radio Tuner — airband on 121.500 Guard with presets and squelch">
   <img src="docs/settings-menu.png" width="49%" alt="Settings menu">
   <br>
-  <em>Radar Scope, full-width Map Scope (OpenAIP airspace with live decoder stats on the rail),
-  Radio Tuner on 121.500 Guard, and Settings — captured on-device (F12 screenshot hotkey)</em>
+  <em>Radar Scope, full-width Map Scope with live traffic (DAL/UPS/SWA arrivals
+  over the OpenAIP airspace chart), Radio Tuner on 121.500 Guard, and Settings —
+  captured on-device (F12 screenshot hotkey)</em>
 </p>
 
 ## Features
@@ -36,9 +37,12 @@ main display**, and a **100 px instrument rail** on the right. Everything is
 driven from the four touch zones or an optional paired Bluetooth/USB
 keyboard. From the main menu:
 
-- **Radar Scope** — PPI radar sweep (smooth 4-second revolution) plotting live
-  ADS-B aircraft around your GPS position with callsign and altitude labels.
-  Tracks that stop updating dim after 30 seconds and age out at 90.
+- **Radar Scope** — classic phosphor P-scope: a glowing sweep with a fading
+  decay trail (4-second revolution, fixed 240 px radius), CRT tube-glow,
+  range rings at 1/3, 2/3, and full range, cardinal ticks with an N marker,
+  and an ownship cross — plotting live ADS-B aircraft with callsign and
+  altitude labels. Tracks that stop updating dim after 30 seconds and age
+  out at 90.
 - **Map Scope** — the same traffic overlaid on aviation chart tiles (airspace,
   airports, NAVAIDs), using the full 600 px width; chart areas missing from
   the tile cache render black instead of failing the view.
@@ -58,7 +62,9 @@ keyboard. From the main menu:
 The right column is a live instrument rail, refreshed every 2 seconds
 (top to bottom):
 
-- **GPS bar** — green: position fix; amber: no lock.
+- **GPS readout** — ground speed (knots) and MSL altitude (feet) from the
+  GPS, drawn in the fix-status color: green with a fix, amber dashes
+  without.
 - **ADS-B bar** — amber: connected to the dump1090 feed; green: aircraft
   heard in the last 90 seconds. After a single-dongle tuner session the feed
   reconnects automatically in ~8 seconds.
@@ -184,6 +190,17 @@ the SDR dongle sits next to it. For greatly improved reception:
 - Judge each change with the instrument rail's SDR stats: a noise floor
   (`NF`) around **−42 dBFS** means a quiet site, around **−30 dBFS** means
   interference is winning; rising `MSG` and `POS` rates are the payoff.
+  (Verified in practice: remoting the receiver away from the panel took
+  this site from a jammed −30 dBFS floor with zero decodes to −41 dBFS
+  with 1800+ messages and 150+ positions per minute.)
+- **Mind USB power on the extension**: a long or thin cable drops voltage,
+  and an undervolted dongle can fail its tuner PLL (`[R82XX] PLL not
+  locked!` in the dump1090 journal) — the decoder then runs while
+  processing zero samples, i.e. an empty sky under heavy traffic. The
+  image detects this (red **STALLED** in the rail's SDR block) and
+  self-recovers via `aeroscan-sdr-watchdog` (dump1090 restart, then USB
+  rebind), but if it recurs the durable fix is a shorter/thicker cable or
+  a small powered hub at the receiver end.
 
 ## Display selection (Pi 4)
 
@@ -293,6 +310,12 @@ shell instead, run `systemctl stop aeroscan-gui` over SSH or the serial
 console (a getty also remains on tty1 beneath the GUI). `aeroscan-setup`
 configures WiFi, display, and hostname from the shell if you prefer that to
 the in-app Settings.
+
+The image is hardened for indefinite unattended operation: the GUI respawns
+on any crash (power-menu exits excepted — Poweroff/Reboot/Exit do what they
+say), a 15-second hardware watchdog reboots the box on kernel hangs, the
+journal is capped at 64 MB, screenshots self-prune, and the first boot
+expands the filesystem to the full card.
 
 ## Repository layout
 

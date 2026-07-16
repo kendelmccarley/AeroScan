@@ -1,0 +1,67 @@
+#!/bin/sh
+# Recover a wedged RTL-SDR without human help.
+#
+# Failure mode (seen 2026-07-16): the R820T tuner comes out of a rapid
+# close/reopen (rtl_tcp <-> dump1090 handoff) or a USB voltage sag with an
+# unlocked PLL — dump1090 keeps running but processes ZERO samples, showing
+# an empty sky under heavy traffic. Manual fix that worked: restart
+# dump1090; escalate to a USB unbind/rebind of the dongle. This loop
+# automates exactly that.
+#
+# Polls dump1090's stats.json every 30 s. Only acts while dump1090 is
+# active (the radio tuner and rtl_tcp legitimately stop it). Two
+# consecutive zero-sample reads (~1 min) -> restart dump1090; still dead
+# two reads later -> USB rebind + restart; then backs off and repeats.
+
+STATS=/run/dump1090/stats.json
+zeros=0
+
+samples() {
+    python3 -c "
+import json,sys
+try:
+    print(int(json.load(open('$STATS')).get('last1min',{}).get('local',{}).get('samples_processed',0)))
+except Exception:
+    print(-1)" 2>/dev/null
+}
+
+usb_rebind() {
+    for prod in /sys/bus/usb/devices/*/product; do
+        grep -q RTL28 "$prod" 2>/dev/null || continue
+        dev=$(basename "$(dirname "$prod")")
+        echo "aeroscan-sdr-watchdog: USB rebind of $dev"
+        echo "$dev" > /sys/bus/usb/drivers/usb/unbind 2>/dev/null
+        sleep 3
+        echo "$dev" > /sys/bus/usb/drivers/usb/bind 2>/dev/null
+    done
+    sleep 3
+}
+
+while true; do
+    sleep 30
+    systemctl -q is-active dump1090.service || { zeros=0; continue; }
+    s=$(samples)
+    # -1 = stats not readable yet (service just started); treat as grace
+    if [ "$s" -gt 0 ] || [ "$s" -lt 0 ]; then
+        zeros=0
+        continue
+    fi
+    zeros=$((zeros + 1))
+    case "$zeros" in
+        2)
+            echo "aeroscan-sdr-watchdog: dump1090 active but 0 samples for ~1 min — restarting dump1090"
+            systemctl restart dump1090.service
+            ;;
+        4)
+            echo "aeroscan-sdr-watchdog: still deaf after restart — USB rebind + restart"
+            systemctl stop dump1090.service
+            usb_rebind
+            systemctl start dump1090.service
+            ;;
+        6)
+            # Throttle: keep retrying the escalation path every ~2 min
+            echo "aeroscan-sdr-watchdog: still deaf — will keep retrying"
+            zeros=2
+            ;;
+    esac
+done

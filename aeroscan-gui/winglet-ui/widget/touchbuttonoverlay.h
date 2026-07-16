@@ -51,6 +51,8 @@ private:
     // Monitored stats for the right column (SDR: slots 2-3, Pi: slots 4-5)
     void pollStats();
     bool   m_sdrValid = false;
+    bool   m_sdrStalled = false;
+    int    m_sdrZeroPolls = 0;
     double m_sdrMsgPerMin = -1, m_sdrPosPerMin = -1;
     double m_sdrSignal = 0, m_sdrNoise = 0, m_sdrDropPct = 0;
     bool   m_sdrSignalValid = false, m_sdrNoiseValid = false;

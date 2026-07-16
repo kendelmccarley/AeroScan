@@ -151,6 +151,12 @@ void TouchButtonOverlay::pollStats()
             const double sd = loc.value(QStringLiteral("samples_dropped")).toDouble();
             m_sdrDropPct = sp > 0 ? (sd / sp) * 100.0 : 0.0;
             m_sdrValid = true;
+            // Deaf-decoder alarm: dump1090 running but processing no
+            // samples (wedged tuner PLL / USB power sag). ~40 s of
+            // consecutive zero reads before declaring, to ride out
+            // startup and window resets.
+            m_sdrZeroPolls = (sp <= 0) ? m_sdrZeroPolls + 1 : 0;
+            m_sdrStalled = (m_sdrZeroPolls >= 20);
         }
     }
 
@@ -395,6 +401,8 @@ void TouchButtonOverlay::paintRight(QPainter &p)
             QStringList lines;
             if (i == 2) {
                 lines << QStringLiteral("SDR");
+                if (m_sdrStalled)
+                    lines << QStringLiteral("STALLED");
                 if (m_sdrValid) {
                     lines << QStringLiteral("MSG %1/m").arg(qRound(m_sdrMsgPerMin))
                           << QStringLiteral("POS %1/m").arg(qRound(m_sdrPosPerMin))
@@ -431,7 +439,8 @@ void TouchButtonOverlay::paintRight(QPainter &p)
                 if (!m_uptime.isEmpty())
                     lines << QStringLiteral("UP %1").arg(m_uptime);
             }
-            p.setPen(C_MUTED);
+            p.setPen(i == 2 && m_sdrStalled ? QColor(0xdd, 0x22, 0x22)
+                                             : C_MUTED);
             p.drawText(blockRect, Qt::AlignHCenter | Qt::AlignTop,
                        lines.join(QStringLiteral("\n")));
             continue;

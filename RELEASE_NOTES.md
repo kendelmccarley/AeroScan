@@ -1,5 +1,16 @@
 # AeroScan Release Notes — July 2026 development snapshot
 
+> **Update (2026-07-16, post-v0.2b):** the RF mitigation worked — remoting
+> the SDR receiver on a USB extension away from the display panel took the
+> site from a jammed −30 dBFS floor to −41 dBFS with 1800+ messages and
+> 150+ positions/minute; scopes now show dense live traffic. Since v0.2b:
+> phosphor P-scope radar rendering with fixed-radius sweep, GPS
+> velocity/altitude readout (plus a GPS-only-receiver altitude parsing
+> fix), Remote SDR server (rtl_tcp) controlled from Settings, map/radar
+> aircraft render parity, GUI autostart, and appliance hardening
+> (crash respawn, hardware watchdog, functioning power menu, bounded
+> logs/screenshots/memory, filesystem expansion fix).
+
 ## Developer hardware configuration
 
 | Component | In use |

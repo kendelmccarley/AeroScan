@@ -1,0 +1,12 @@
+[Unit]
+Description=Recover a wedged RTL-SDR (deaf dump1090 detector)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/aeroscan-sdr-watchdog
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
