@@ -150,7 +150,9 @@ CanardBoard::CanardBoard(QWidget *parent)
     statusBar = new StatusBar(this);
 
     bgLogoLabel = new QLabel(this);
-    activeTheme->loadMonochromeIcon(&bgLogo, ":/images/canard_logo.png", QPalette::Shadow);
+    // Parhelia sprite as a grey background watermark (subtle enough not to
+    // fight the control stack for legibility).
+    activeTheme->loadColoredIcon(&bgLogo, ":/images/parhelia_mark.png", QColor("#1c1c1c"));
     bgLogoLabel->resize(bgLogo.size());
     bgLogoLabel->setPixmap(bgLogo);
     bgLogoLabel->lower();
@@ -564,6 +566,19 @@ void CanardBoard::rebuildBandPresets()
             e.presetId   = -1;
             m_bandPresets.append(e);
         }
+    } else if (m_mode == RtlFmWorker::MODE_AIRBAND) {
+        // FAA NASR data not downloaded: say so in the stepper instead of
+        // silently showing favorites only (or nothing). Prepended so the
+        // warning is the FIRST thing the preset row shows — buried after the
+        // favorites it goes unseen. freqKhz == 0 marks the row informational;
+        // stepping onto it never tunes.
+        PresetEntry e;
+        e.name       = QStringLiteral("No FAA data — Settings");
+        e.detail     = QStringLiteral("Update Radio Data");
+        e.freqKhz    = 0;
+        e.isFavorite = false;
+        e.presetId   = -1;
+        m_bandPresets.prepend(e);
     }
 
     m_presetSel = qBound(0, m_presetSel, qMax(0, m_bandPresets.size() - 1));
@@ -574,7 +589,7 @@ void CanardBoard::selectPreset(int idx, bool tune)
     if (m_bandPresets.isEmpty())
         return;
     m_presetSel = qBound(0, idx, m_bandPresets.size() - 1);
-    if (tune) {
+    if (tune && m_bandPresets[m_presetSel].freqKhz != 0) {  // 0 = info row
         m_freq = RadioPresets::khzToUiFreq(m_mode, m_bandPresets[m_presetSel].freqKhz);
         applyTune();
     }
@@ -588,8 +603,13 @@ void CanardBoard::openPresetBrowser()
     if (model->rowCount() == 0) {
         delete model;
         m_actionState = AS_MSGBOX_RETURN;
+        const bool airbandNoData = (m_mode == RtlFmWorker::MODE_AIRBAND
+                                    && !WingletGUI::inst->nasr->isLoaded());
         WingletGUI::inst->showMessageBox(
-            "No presets for this band yet.\nUse Save Preset to add one.", "No Presets");
+            airbandNoData
+                ? "No presets for this band yet.\n\nDownload airport frequencies via\nSettings > Radio Options >\nUpdate Radio Data,\nor use Save Preset to add one."
+                : "No presets for this band yet.\nUse Save Preset to add one.",
+            "No Presets");
         return;
     }
     m_actionState = AS_BROWSER_RETURN;

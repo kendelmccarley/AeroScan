@@ -1,8 +1,9 @@
-# aeroscan-gui does NOT autostart during development — boot lands on the tty1
-# login shell; start the GUI manually with:  systemctl start aeroscan-gui
-# (The retired aeroscan-bt-pair flow that used to manage GUI startup is gone;
-# bluetooth pairing is now in-app.)
-disable aeroscan-gui.service
+# aeroscan-gui autostarts at boot (enabled 2026-07-16 — the appliance
+# behavior; development happened on tty1 with manual starts). It pulls in
+# dump1090 via Wants= and its ExecStartPre runs aeroscan-display-init.
+# Drop to a shell with: systemctl stop aeroscan-gui (getty stays on tty1
+# beneath it and on the serial console).
+enable aeroscan-gui.service
 enable aeroscan-bt-init.service
 # dump1090 is started by aeroscan-gui.service (Wants=) and stopped with it
 # (PartOf=) — not at boot, where it would pin a core demodulating for nobody.

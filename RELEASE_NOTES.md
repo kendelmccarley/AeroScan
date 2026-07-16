@@ -12,18 +12,23 @@
 | WiFi / BT | Onboard BCM43455 (5 GHz WiFi in use; BT runs the Raspberry Pi-tuned BCM4345C0 firmware after the idle-wedge fix) |
 | Input | Panel touch + USB or Bluetooth keyboard; F12/PrintScreen captures screenshots |
 
-## RF reception status — suspected local jamming and antenna problems
+## RF reception status — panel-generated jamming and antenna limitations
 
-ADS-B reception at the development site is currently poor and inconsistent,
-with strong evidence of a **local, intermittent, broadband interferer**:
+ADS-B reception at the development site is currently poor and inconsistent.
+The interferer has been identified — **the DSI display panel jams the
+receiver** — and the practical mitigations are a USB extension cable to
+remote the SDR stick away from the panel/Pi, plus antenna placement
+experiments:
 
 - The receiver noise floor swings between about **−42 dBFS (quiet, frames
   decode)** and **−30 dBFS (jammed, nothing decodes)** on a timescale of
   minutes. During jammed periods the demodulator logs hundreds of thousands
   of noise-triggered preambles with zero valid CRCs.
-- Candidate sources not yet isolated: the DSI panel/ribbon, the Pi itself and
-  its cabling, chargers/LED lighting nearby. Physical separation experiments
-  are the next step.
+- **Source identified: the DSI display panel.** The panel/ribbon generates
+  broadband interference that raises the 1090 MHz noise floor when the SDR
+  dongle is close to it. Mitigation: remote the receiver on a USB extension
+  cable and experiment with antenna placement away from the electronics
+  (watch the instrument rail's NF meter while moving things).
 - One SDR stick exhibited an effectively **open antenna input** (−41 dBFS
   floor, pure noise) — believed to be an antenna connector mismatch
   (MCX vs SMA). Antenna/stick pairing matters.
@@ -64,8 +69,9 @@ with strong evidence of a **local, intermittent, broadband interferer**:
 
 ## Still under investigation
 
-- Identity and mitigation of the local RF interferer; antenna selection and
-  placement (measure with the on-screen NF/MSG/POS meters).
+- Mitigation of the panel-generated RF interference (USB-extension remoting
+  of the receiver, antenna selection and placement — measure with the
+  on-screen NF/MSG/POS meters); quantifying achievable range once quiet.
 - Whether the ADS-B indicator's green state should require a *plottable*
   aircraft (position decoded) rather than merely one heard — proposed, not
   yet decided.
@@ -86,9 +92,10 @@ with strong evidence of a **local, intermittent, broadband interferer**:
 
 ## Not yet implemented
 
-- Radar Scope / Map Scope / Radio Tuner screenshots for the README gallery
-  (blocked on usable live traffic — see RF status).
-- Hardware: tuned 1090 MHz antenna and permanent siting.
+- README gallery screenshots showing live traffic on the scopes (the current
+  set was captured with an empty sky — see RF status).
+- Hardware: USB extension for the receiver, tuned 1090 MHz antenna, and
+  permanent siting away from the display panel.
 - Possible indicator refinements above; dim-threshold tuning against real
   position-update rates.
 - Remaining roadmap items per `DEVELOPMENT_PLAN.md`.

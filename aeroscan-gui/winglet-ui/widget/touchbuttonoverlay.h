@@ -54,6 +54,8 @@ private:
     double m_sdrMsgPerMin = -1, m_sdrPosPerMin = -1;
     double m_sdrSignal = 0, m_sdrNoise = 0, m_sdrDropPct = 0;
     bool   m_sdrSignalValid = false, m_sdrNoiseValid = false;
+    double m_gpsKnots = -1;
+    int m_gpsAltFt = 0;
     int m_cpuPct = -1, m_ramPct = -1, m_tempC = -1;
     double m_cpuGHz = -1;
     QString m_load1, m_uptime;

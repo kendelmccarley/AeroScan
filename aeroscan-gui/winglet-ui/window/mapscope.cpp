@@ -449,13 +449,15 @@ void MapScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircraft
         if (entry->timestamp.secsTo(QDateTime::currentDateTimeUtc()) > STALE_DIM_SEC)
             paint->setOpacity(liveOpacity * 0.35);
 
+        // Aircraft render identical to RadarScope: rotated arrow icon with
+        // always-on callsign and altitude labels.
         if(RENDER_AIRPLANE_IMAGE == true && entry->planeTrackValid){
             QImage test = QImage(DEFAULT_AIRPLANE_IMAGE);
-            test = test.scaled(40, 40, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            test = test.scaled(32, 32, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             QTransform transform = QTransform();
             transform.rotate(entry->planeTrack);
             test = test.transformed(transform);
-            paint->drawImage(QPoint(coord.x()-20,coord.y()-20), test);
+            paint->drawImage(QPoint(coord.x()-16,coord.y()-16), test);
         }else{
 
             QColor color = DEFAULT_AIRPLANE;
@@ -477,25 +479,35 @@ void MapScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircraft
             paint->setBrush(QBrush(color));
             paint->setPen(QPen(color));
 
-            QPolygon diamond;
-            diamond << QPoint(coord.x(),               coord.y() - AIRCRAFT_SIZE)
-                    << QPoint(coord.x() + AIRCRAFT_SIZE, coord.y())
-                    << QPoint(coord.x(),               coord.y() + AIRCRAFT_SIZE)
-                    << QPoint(coord.x() - AIRCRAFT_SIZE, coord.y());
-            paint->drawPolygon(diamond);
+            paint->save();
+            paint->translate(coord.x(), coord.y());
+            if (entry->planeTrackValid)
+                paint->rotate(entry->planeTrack);
+            QPolygon arrow;
+            arrow << QPoint(0,                    -AIRCRAFT_SIZE)
+                  << QPoint(AIRCRAFT_SIZE - 2,     AIRCRAFT_SIZE - 2)
+                  << QPoint(0,                      AIRCRAFT_SIZE / 3)
+                  << QPoint(-(AIRCRAFT_SIZE - 2),   AIRCRAFT_SIZE - 2);
+            paint->drawPolygon(arrow);
+            paint->restore();
         }
 
-        //If the cursor is hoovering over this plane then render the details of it.
-        if(showInfo){
-            QFont bold(activeTheme->standardFont, 20); // or Fantasy or AnyStyle or Helvetica
-            paint->setFont(bold);
-            if(entry->callSignValid){
-                paint->drawText(coord.x()-40, coord.y()-48,QString(entry->callSign));
-            } else {
-                paint->drawText(coord.x()-40, coord.y()-48, QString::number(entry->icao24, 16).rightJustified(6, '0').toUpper());
-            }
-            QString distanceStr = QString::number(distance, 'f', 2) + "nm";
-            paint->drawText(coord.x()-40, coord.y()-22, distanceStr);
+        // Always show callsign (line 1) and altitude (line 2), anchored at
+        // the icon's 5 o'clock (below-right) so the text never covers the
+        // arrow or the track ahead of it. 2/3 the radar label size — the map
+        // is busier than the dark scope.
+        {
+            QFont labelFont(activeTheme->standardFont, 11);
+            paint->setFont(labelFont);
+            paint->setPen(QPen(Qt::white));
+            QString ident = entry->callSignValid
+                ? entry->callSign.trimmed()
+                : QString::number(entry->icao24, 16).rightJustified(6, '0').toUpper();
+            int lx = coord.x() + AIRCRAFT_SIZE / 2;
+            int ly = coord.y() + AIRCRAFT_SIZE + 12;
+            paint->drawText(lx, ly, ident);
+            if (entry->altValid)
+                paint->drawText(lx, ly + 15, QString::number(entry->alt) + "ft");
         }
 
         paint->setOpacity(liveOpacity);

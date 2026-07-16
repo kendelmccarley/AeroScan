@@ -765,9 +765,9 @@ order — drone detection now depends on it rather than the reverse.
 
 Done so far: reproducible `sdcard.img` per target with post-image assembly,
 first-boot rootfs auto-expansion, verified flashing via `flash-sd.sh`, release
-notes shipped to `/etc/release_notes`. Still open: read-only rootfs with
-writable overlay, GUI auto-start (deliberately preset-disabled during
-development — boot lands on tty1), boot-time targets unmeasured.
+notes shipped to `/etc/release_notes`, GUI auto-start at boot (enabled
+2026-07-16; `systemctl stop aeroscan-gui` drops to the shell). Still open:
+read-only rootfs with writable overlay, boot-time targets unmeasured.
 
 **Deliverable:** Flashable images for both hardware targets.
 

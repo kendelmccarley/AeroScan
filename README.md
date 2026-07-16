@@ -132,6 +132,20 @@ spontaneous reboots.
 | USB WiFi dongle | RT5370 supported out of the box |
 | Bluetooth | Pi 4 uses onboard BT (Pi 2 needs a USB dongle); in-app pairing over BlueZ D-Bus for a keyboard and/or audio headphones |
 
+### ADS-B reception tips
+
+The DSI display panel generates broadband RF interference (measured as a
+~10 dB noise-floor rise at 1090 MHz) that can drown weak ADS-B signals when
+the SDR dongle sits next to it. For greatly improved reception:
+
+- **Use a USB extension cable** to remote the RTL-SDR receiver away from the
+  Pi and its display panel — this is the single highest-impact change.
+- **Experiment with antenna placement**: elevated, near or outside a window,
+  and as far from the electronics as the cable allows.
+- Judge each change with the instrument rail's SDR stats: a noise floor
+  (`NF`) around **−42 dBFS** means a quiet site, around **−30 dBFS** means
+  interference is winning; rising `MSG` and `POS` rates are the payoff.
+
 ## Display selection (Pi 4)
 
 The Pi 4 image supports two panels. The active one is chosen by a single
@@ -235,10 +249,11 @@ Airspace System Resource (NASR) dataset, not a baked-in file:
 
 On the first boot the root partition automatically expands to fill the SD
 card (`aeroscan-expand-rootfs.service`, runs once early in boot, takes a few
-seconds). Boot lands on a tty1 shell (the GUI service is preset-disabled on
-the Pi 4 image while the port is under active development). Run `aeroscan-setup` on the
-console or over SSH to configure WiFi, display, and hostname, then start the
-GUI with `systemctl start aeroscan-gui` or run `aeroscan-gui` directly.
+seconds), then the GUI starts automatically on the display. To drop to a
+shell instead, run `systemctl stop aeroscan-gui` over SSH or the serial
+console (a getty also remains on tty1 beneath the GUI). `aeroscan-setup`
+configures WiFi, display, and hostname from the shell if you prefer that to
+the in-app Settings.
 
 ## Repository layout
 

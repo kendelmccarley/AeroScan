@@ -48,7 +48,9 @@ TouchButtonOverlay::TouchButtonOverlay(Side side, QWidget *parent)
             update();
         });
         clock->start();
-        pollStats();
+        // Deferred: the overlay is constructed in WingletGUI's initializer
+        // list, before WingletGUI::inst and the worker objects exist.
+        QTimer::singleShot(0, this, &TouchButtonOverlay::pollStats);
     }
     if (m_side == Left) {
         m_pressTimer = new QTimer(this);
@@ -119,6 +121,15 @@ void TouchButtonOverlay::setAdsbAircraftCount(int count)
 
 void TouchButtonOverlay::pollStats()
 {
+    // GPS velocity (already in knots, from RMC) and MSL altitude (metres,
+    // from GGA) for the top segment. Guarded: this can run before WingletGUI
+    // finishes constructing.
+    if (WingletGUI::inst && WingletGUI::inst->gpsReceiver) {
+        const auto gps = WingletGUI::inst->gpsReceiver->lastReading();
+        m_gpsKnots = gps.valid ? gps.speedKnots : -1;
+        m_gpsAltFt = qRound(WingletGUI::inst->gpsReceiver->getConstellation().msl * 3.28084);
+    }
+
     // dump1090 decoder stats (rolling last-1-minute window)
     m_sdrValid = false;
     QFile f(QStringLiteral("/run/dump1090/stats.json"));
@@ -351,6 +362,26 @@ void TouchButtonOverlay::paintRight(QPainter &p)
         if (i > 0 && i != 3 && i != 5) {  // 2+3 and 4+5 are merged blocks
             p.setPen(QPen(C_DIVIDER, 1));
             p.drawLine(4, segTop, w - 4, segTop);
+        }
+
+        if (i == 0) {  // GPS: velocity + altitude, coloured by fix status
+            const QColor &col = segColor[0];
+            QFont f("Lato");
+            f.setPixelSize(13);
+            p.setFont(f);
+            QString kts = QStringLiteral("-- kt");
+            QString alt = QStringLiteral("-- ft");
+            if (m_gpsState == 2 && m_gpsKnots >= 0) {
+                kts = QStringLiteral("%1 kt").arg(qRound(m_gpsKnots));
+                alt = QStringLiteral("%1 ft").arg(m_gpsAltFt);
+            }
+            p.setPen(col.isValid() ? col : C_MUTED);
+            p.drawText(QRect(0, segTop + 4, w, 15), Qt::AlignHCenter, kts);
+            p.drawText(QRect(0, segTop + 19, w, 15), Qt::AlignHCenter, alt);
+            p.setPen(C_MUTED);
+            p.setFont(labelFont);
+            p.drawText(QRect(0, segTop + 38, w, 14), Qt::AlignHCenter, R_LABELS[0]);
+            continue;
         }
 
         if (i == 2 || i == 4) {  // SDR stats / Pi stats, two segments each
