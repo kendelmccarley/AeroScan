@@ -1,6 +1,7 @@
 #ifndef WINGLETGUI_H
 #define WINGLETGUI_H
 
+#include <QDateTime>
 #include <QMainWindow>
 #include <QLabel>
 #include <QStackedWidget>
@@ -53,6 +54,11 @@ public:
 
     static WingletGUI* inst;
 
+    // Wall-clock time in the timezone implied by the GPS position (CONUS
+    // zone bands + AK/HI/AZ, DST from the zone database; solar-time fallback
+    // elsewhere; system zone when there has never been a fix).
+    QDateTime gpsLocalTime();
+
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
     void keyPressEvent(QKeyEvent *ev) override;
@@ -65,6 +71,8 @@ private slots:
     void btPairedDevicesChanged();
 
 private:
+    void startAutoScreenshots();
+    void saveScreenshot();
     bool writeAudioOutputConf(int output);
     int lastGoodAudioOutput = 0;
     bool btAudioWasConnected = false;

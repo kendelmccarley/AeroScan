@@ -284,8 +284,12 @@ void BluetoothMonitor::interfacesAdded(const QDBusObjectPath &path, InterfaceMap
 
 void BluetoothMonitor::interfacesRemoved(const QDBusObjectPath &path, const QStringList &interfaces)
 {
-    if (interfaces.contains(DEVICE_IFACE))
+    if (interfaces.contains(DEVICE_IFACE)) {
         deviceProps.remove(path.path());
+        removingDevices.remove(path.path());  // forget completed (or gone anyway)
+        reconnectInFlight.remove(path.path());
+        lastReconnectAttemptMs.remove(path.path());
+    }
 
     if (interfaces.contains(ADAPTER_IFACE) && path.path() == adapterPath) {
         adapterPath.clear();
@@ -483,6 +487,8 @@ void BluetoothMonitor::maybeReconnectAudio()
             continue;
         if (!looksLikeAudio(props))
             continue;
+        if (removingDevices.contains(path))
+            continue;  // A forget is in flight — don't reconnect it back
         if (reconnectInFlight.contains(path))
             continue;
         if (lastReconnectAttemptMs.value(path, 0) + RECONNECT_MIN_INTERVAL_MS > now)
@@ -540,12 +546,38 @@ void BluetoothMonitor::removeDeviceInThread(QString devicePath)
     if (!bluezAvailable || adapterPath.isEmpty())
         return;
 
+    // Suppress the auto-reconnect loop for this device while removal is in
+    // flight. RemoveDevice is async and the device stays paired in our cache
+    // until InterfacesRemoved lands, so maybeReconnectAudio() would otherwise
+    // Connect() (and re-Trust) it right back — the classic "forget didn't work"
+    // race. Also forget any pending reconnect throttle/inflight bookkeeping so a
+    // stale Connect() reply can't resurrect it.
+    removingDevices.insert(devicePath);
+    reconnectInFlight.remove(devicePath);
+    lastReconnectAttemptMs.remove(devicePath);
+
     // RemoveDevice also deletes the stored link key; bluetoothd then emits
-    // InterfacesRemoved which drops it from our cache.
+    // InterfacesRemoved which drops it from our cache (and clears the guard).
+    // Watch the reply so a failure isn't silently swallowed and the guard is
+    // released on error, leaving the device managed (and retriable) as before.
     QDBusMessage msg = QDBusMessage::createMethodCall(BLUEZ_SERVICE, adapterPath,
                                                       ADAPTER_IFACE, "RemoveDevice");
     msg << QVariant::fromValue(QDBusObjectPath(devicePath));
-    QDBusConnection::systemBus().asyncCall(msg);
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::systemBus().asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, devicePath](QDBusPendingCallWatcher *w) {
+                QDBusPendingReply<> reply = *w;
+                w->deleteLater();
+                if (reply.isError()) {
+                    qWarning("BluetoothMonitor: RemoveDevice(%s) failed: %s",
+                             qPrintable(devicePath),
+                             qPrintable(reply.error().message()));
+                    removingDevices.remove(devicePath);
+                }
+                // On success the guard is cleared in interfacesRemoved(), which
+                // is also where the cache entry disappears.
+            });
 }
 
 void BluetoothMonitor::reportPairingResult(bool success, const QString &errorMessage)

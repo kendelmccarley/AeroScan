@@ -2,6 +2,9 @@
 #include "winglet-ui/theme.h"
 #include "winglet-ui/windowcore/mainmenu.h"
 #include "winglet-ui/windowcore/messagebox.h"
+#include <QDateTime>
+#include <QDir>
+#include <QTimeZone>
 #include <QKeyEvent>
 #include <QMouseEvent>
 
@@ -26,6 +29,8 @@ WingletGUI::WingletGUI(QWidget *parent)
     connect(&settings, SIGNAL(darkModeChanged(bool)), WingletUI::activeTheme, SLOT(setColorModePalette(bool)));
     WingletUI::activeTheme->setColorModePalette(settings.darkMode());
     connect(WingletUI::activeTheme, SIGNAL(colorPaletteChanged()), this, SLOT(colorPaletteUpdated()));
+
+    startAutoScreenshots();
 
     // Pre-register socket meta type before worker threads start to avoid race
     dummySocket = new QTcpSocket(this);
@@ -87,15 +92,27 @@ WingletGUI::WingletGUI(QWidget *parent)
 
     setCentralWidget(centralContainer);
 
-    appStack->setGeometry(160, 0, 480, 480);
+    // 100px touch strip | 600px main display | 100px status strip.
+    // Legacy 480x480 screens are centered by the stack margins (center x=400
+    // is unchanged from the old 160..640 layout); screens that can use the
+    // full 600px width (map scope) set the "fullBleedScreen" property and the
+    // margins collapse while they are on top.
+    appStack->setGeometry(100, 0, 600, 480);
+    appStack->setContentsMargins(60, 0, 60, 0);
+    connect(appStack, &QStackedWidget::currentChanged, this, [this](int) {
+        QWidget *w = appStack->currentWidget();
+        bool full = w && w->property("fullBleedScreen").toBool();
+        int m = full ? 0 : 60;
+        appStack->setContentsMargins(m, 0, m, 0);
+    });
     appStack->setObjectName("AppStack");
     appStack->addWidget(new WingletUI::MainMenu(this));
     appStack->currentWidget()->setObjectName("MainMenu");
 
-    leftOverlay->setGeometry(0, 0, 160, 480);
+    leftOverlay->setGeometry(0, 0, 100, 480);
     leftOverlay->setFocusPolicy(Qt::NoFocus);
     connect(leftOverlay, SIGNAL(zonePressed(int)), this, SLOT(overlayZonePressed(int)));
-    rightOverlay->setGeometry(640, 0, 160, 480);
+    rightOverlay->setGeometry(700, 0, 100, 480);
 
 #ifdef NO_HARDWARE
     QPixmap ringBackground(":/images/dev_ring.png");
@@ -379,6 +396,14 @@ bool WingletGUI::eventFilter(QObject *object, QEvent *event)
             QApplication::exit(WingletUI::EXIT_CODE_POWEROFF);
             return true;
         }
+        // F12 / PrintScreen on an attached keyboard: save a screenshot of the
+        // UI (QWidget::grab renders the widget tree in software, so it works
+        // under eglfs where screen readback is unreliable).
+        if ((keyEvent->key() == Qt::Key_F12 || keyEvent->key() == Qt::Key_Print)
+                && !keyEvent->isAutoRepeat()) {
+            saveScreenshot();
+            return true;
+        }
     }
 
     // Convert a tap on the center app-stack area into Key_A (select).
@@ -399,6 +424,67 @@ bool WingletGUI::eventFilter(QObject *object, QEvent *event)
     }
 
     return false;
+}
+
+void WingletGUI::startAutoScreenshots()
+{
+    // Debug aid: AEROSCAN_SHOT_PERIOD=<seconds> captures the UI periodically
+    // so rendering issues can be inspected from a remote shell.
+    bool ok = false;
+    int period = qEnvironmentVariableIntValue("AEROSCAN_SHOT_PERIOD", &ok);
+    if (!ok || period <= 0)
+        return;
+    QTimer *t = new QTimer(this);
+    connect(t, &QTimer::timeout, this, [this]() { saveScreenshot(); });
+    t->start(period * 1000);
+}
+
+QDateTime WingletGUI::gpsLocalTime()
+{
+    auto reading = gpsReceiver->lastReading();
+    double lat = reading.valid ? reading.latitude  : settings.lastLatitude();
+    double lon = reading.valid ? reading.longitude : settings.lastLongitude();
+
+    if (lat == 0.0 && lon == 0.0)
+        return QDateTime::currentDateTime();  // never had a fix: system zone
+
+    QByteArray zone;
+    if (lat > 51.0 && lon < -129.5 && lon > -170.0)
+        zone = "America/Anchorage";
+    else if (lat < 23.0 && lon < -154.0)
+        zone = "Pacific/Honolulu";
+    else if (lat >= 31.3 && lat <= 37.0 && lon >= -114.8 && lon <= -109.0)
+        zone = "America/Phoenix";  // Arizona: no DST
+    else if (lat >= 24.0 && lat <= 49.5 && lon >= -125.0 && lon <= -66.0) {
+        // CONUS, approximate zone boundaries by longitude
+        if      (lon > -85.0)  zone = "America/New_York";
+        else if (lon > -101.5) zone = "America/Chicago";
+        else if (lon > -114.0) zone = "America/Denver";
+        else                   zone = "America/Los_Angeles";
+    }
+
+    if (!zone.isEmpty()) {
+        QTimeZone tz(zone);
+        if (tz.isValid())
+            return QDateTime::currentDateTimeUtc().toTimeZone(tz);
+    }
+
+    // Outside mapped regions: solar time from longitude
+    int offsetSec = qRound(lon / 15.0) * 3600;
+    return QDateTime::currentDateTimeUtc().toOffsetFromUtc(offsetSec);
+}
+
+void WingletGUI::saveScreenshot()
+{
+    QDir dir(QStringLiteral("/var/lib/aeroscan/screenshots"));
+    if (!dir.exists())
+        dir.mkpath(QStringLiteral("."));
+    QString path = dir.filePath(QStringLiteral("screen-%1.png")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"))));
+    if (grab().save(path))
+        qInfo("WingletGUI: screenshot saved to %s", qPrintable(path));
+    else
+        qWarning("WingletGUI: screenshot save failed for %s", qPrintable(path));
 }
 
 void WingletGUI::overlayZonePressed(int zone)

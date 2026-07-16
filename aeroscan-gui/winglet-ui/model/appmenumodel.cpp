@@ -72,17 +72,6 @@ QModelIndex AppMenuModel::index(int row, int column, const QModelIndex &parent) 
         return {};
     }
 
-    if (!parent.isValid() && m_hiddenMainEntry >= 0) {
-        // A top-level entry is hidden: map the visible row to its actual
-        // position in the array, skipping over the hidden one.
-        int numVisibleChildren = (int) node->numChildren - 1;
-        if (row < 0 || row >= numVisibleChildren) {
-            return {};
-        }
-        int actualRow = (row >= m_hiddenMainEntry) ? row + 1 : row;
-        return createIndex(row, 0, (void*)(&node->submenu[actualRow]));
-    }
-
     if (row < 0 || row >= (int) node->numChildren) {
         // Row not inside submenu list
         return {};
@@ -106,12 +95,7 @@ QModelIndex AppMenuModel::parent(const QModelIndex &index) const
         return {};
     }
     else {
-        // The parent is a top-level submenu; report its *visible* row so it
-        // stays consistent with index() when an entry above it is hidden.
-        int parentRow = (int) item->parentIndex;
-        if (m_hiddenMainEntry >= 0 && parentRow > m_hiddenMainEntry)
-            parentRow--;
-        return createIndex(parentRow, 0, (void*) item->parent);
+        return createIndex(item->parentIndex, 0, (void*) item->parent);
     }
 }
 
@@ -124,12 +108,7 @@ int AppMenuModel::rowCount(const QModelIndex &parent) const
 
     if (node->submenu) {
         // If submenu defined, its a menu and return number of children
-        int numVisibleChildren = node->numChildren;
-        if (m_hiddenMainEntry >= 0 && !parent.isValid()) {
-            // One top-level entry is hidden
-            numVisibleChildren--;
-        }
-        return numVisibleChildren;
+        return node->numChildren;
     }
     else {
         // If not it's a menu entry, return no children
@@ -147,40 +126,6 @@ Qt::ItemFlags AppMenuModel::flags(const QModelIndex &index) const
 {
     (void) index;
     return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-}
-
-void AppMenuModel::setHiddenMainEntry(int index) {
-    if (m_hiddenMainEntry == index) {
-        return;
-    }
-
-    emit layoutAboutToBeChanged();
-
-    // Remap every persistent index that points at a top-level entry to its new
-    // visible row (or invalidate it if it is now the hidden one). Children of
-    // submenus keep their own row within the submenu, so they are unaffected.
-    const QModelIndexList oldIndexes = persistentIndexList();
-    m_hiddenMainEntry = index;
-
-    for (const QModelIndex &old : oldIndexes) {
-        const AppMenuItem* item = (const AppMenuItem*) old.internalPointer();
-        auto it = parentMap->find(item);
-        if (it == parentMap->end() || it->parent != menuRoot) {
-            continue;  // not a top-level entry
-        }
-        int actualRow = (int) (item - menuRoot->submenu);
-        if (m_hiddenMainEntry >= 0 && actualRow == m_hiddenMainEntry) {
-            changePersistentIndex(old, {});  // this entry is now hidden
-        }
-        else {
-            int visRow = actualRow;
-            if (m_hiddenMainEntry >= 0 && actualRow > m_hiddenMainEntry)
-                visRow--;
-            changePersistentIndex(old, createIndex(visRow, 0, (void*) item));
-        }
-    }
-
-    emit layoutChanged();
 }
 
 } // namespace WingletUI

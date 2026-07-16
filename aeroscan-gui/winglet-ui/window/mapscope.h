@@ -12,9 +12,16 @@
 
 // 10 Hz repaint; 18°/tick keeps the sweep at 180°/s (2 s per revolution)
 #define SWEEPINTERVAL 100
+// Full-bleed view size inside the 100|600|100 screen layout
+#define MAP_VIEW_W 600
+#define MAP_VIEW_H 480
+// Aircraft that stopped updating (marginal reception) coast at their last
+// position until the 90 s prune; dim them after this many seconds so a live
+// track is visually distinct from stale data.
+#define STALE_DIM_SEC 30
 #define DEGREES_PER_INTERVAL 18
 
-#define AIRCRAFT_SIZE 7  // Diamond icon half-size in pixels (center to tip)
+#define AIRCRAFT_SIZE 14  // Diamond icon half-size in pixels (center to tip)
 
 // #define LOCAL_MAP_FILES "/home/defcon2024/Downloads/hometiles"
 #define LOCAL_MAP_FILES "/opt/winglet-gui/maps/"
@@ -53,7 +60,7 @@ public:
     /// cursor setup
     bool cursorEn = false;
     bool infoEn = false;
-    int cursorX = 240;
+    int cursorX = MAP_VIEW_W / 2;
     int cursorY = 240;
     bool viewMap = true;
     bool haveMapTiles = true;

@@ -24,9 +24,13 @@ MapScope::MapScope(QWidget *parent)
     previousGPS = GPSReading(WingletGUI::inst->settings.lastLatitude(),
                              WingletGUI::inst->settings.lastLongitude(), false);
 
-    setGeometry(0, 0, 480, 480);
+    setGeometry(0, 0, MAP_VIEW_W, MAP_VIEW_H);
+    // Uses the whole 600px main display (WingletGUI collapses the stack
+    // margins for screens with this property).
+    setProperty("fullBleedScreen", true);
     label = new QLabel(this);
-    label->setGeometry(0, 0, 480, 480);
+    label->setGeometry(0, 0, MAP_VIEW_W, MAP_VIEW_H);
+    label->setVisible(false);  // frames blit directly in paintEvent
 
 
     // --- Initialize the Debounce Timer ---
@@ -177,13 +181,13 @@ void MapScope::keyPressEvent(QKeyEvent *ev) {
         update();
         break;
     case Qt::Key_Right:
-        if(this->cursorX >= 50 && this->cursorX < 430){
+        if(this->cursorX >= 50 && this->cursorX < MAP_VIEW_W - 50){
             this->cursorX += 5;
         }
         update();
         break;
     case Qt::Key_Left:
-        if(this->cursorX > 50 && this->cursorX <= 430 ){
+        if(this->cursorX > 50 && this->cursorX <= MAP_VIEW_W - 50 ){
             this->cursorX -= 5;
         }
         update();
@@ -254,7 +258,7 @@ void MapScope::paintEvent(QPaintEvent *pEvent)
     (void) pEvent;
 
     // constuct painter
-    QPixmap *pix = new QPixmap(480,480); /// in reality is 480,480
+    QPixmap *pix = new QPixmap(MAP_VIEW_W, MAP_VIEW_H);
     QPainter *painter = new QPainter(pix);
     painter->fillRect(rect(), Qt::black);
 
@@ -265,20 +269,20 @@ void MapScope::paintEvent(QPaintEvent *pEvent)
         if(haveMapTiles == true){
             painter->drawPixmap(0,0,*pixMap);
         }else {
-                painter->drawImage(115,115,QImage(":/images/NOMAP.jpg"));
+                painter->drawImage(175,115,QImage(":/images/NOMAP.jpg"));
         }
         // Show what zoom level you are
         QFont bold(activeTheme->standardFont, 12); // or Fantasy or AnyStyle or Helvetica
         painter->setFont(bold);
         painter->setPen(Qt::darkRed);
-        QRect textRect(200, 450, 200, 200);
+        QRect textRect(260, 450, 200, 200);
         painter->drawText(textRect,1, QStringLiteral("Zoom Level: %1").arg(this->mapLevel));
         if(sdMap == true){
             if (sdMapDir == false){
-                painter->drawImage(60,60,QImage(":/images/NOSDMAP.jpg"));
+                painter->drawImage(120,60,QImage(":/images/NOSDMAP.jpg"));
                 haveMapTiles = false;
             }
-            QRect sdRect(150,420,100,100);
+            QRect sdRect(210,420,100,100);
             painter->drawText(sdRect,1, QStringLiteral("SD Maps"));
         }
 
@@ -320,7 +324,7 @@ void MapScope::paintEvent(QPaintEvent *pEvent)
             //float distance = distanceEarth(entry.lat, entry.lon);
             //float bearing = get_bearing(entry.lat, entry.lon);
             int start_y = int(240 - entry.distance * this->pixel_to_miles);     //Distance calculation refactored to adsbreciever
-            QPoint coord = rotate_matrix(240, start_y, 0, 0, entry.bearing);    //Bearing calculation refactored to adsbreciever
+            QPoint coord = rotate_matrix(MAP_VIEW_W / 2, start_y, 0, 0, entry.bearing);    //Bearing calculation refactored to adsbreciever
 
             // Check if extra info needs to be shown
             bool showInfo = false;
@@ -357,17 +361,19 @@ void MapScope::paintEvent(QPaintEvent *pEvent)
         bold1.setBold(true); // or Fantasy or AnyStyle or Helvetica
         painter->setFont(bold1);
         painter->setPen(QPen(Qt::yellow));
-        painter->drawText(235, 30,QString("I"));
+        painter->drawText(295, 30,QString("I"));
     }
 
-    label->setPixmap(*pix);     //To Do - later - label is an odd variable name for that actual radar scope things to be painted to
     delete painter;
+
+    QPainter self(this);
+    self.drawPixmap(0, 0, *pix);
     delete pix;
 }
 
 QPoint MapScope::rotate_matrix(double x, double y, double x_shift, double y_shift, double angle){
     if(x_shift == 0){
-        x_shift = 240;
+        x_shift = MAP_VIEW_W / 2;
     }
     if(y_shift == 0){
         y_shift = 240;
@@ -393,12 +399,11 @@ QPoint MapScope::rotate_matrix(double x, double y, double x_shift, double y_shif
 /// draw circles for the range form the center
 void MapScope::drawCirle(QPainter *paint, int val){
     float ring = 2.0*val*this->pixel_to_miles;
-    int center = ((480-ring)/2);
-    //QPen pen(SCOPE_LINES_COLOR);
-    //paint->setPen(pen);
-    paint->drawArc(center, center, ring, ring, 0, 16*360);
+    int cx = ((MAP_VIEW_W-ring)/2);
+    int cy = ((MAP_VIEW_H-ring)/2);
+    paint->drawArc(cx, cy, ring, ring, 0, 16*360);
     //Draw the ring labels
-    paint->drawText(231,(this->pixel_to_miles*(val)+250), QString::number(val));
+    paint->drawText(MAP_VIEW_W/2 - 9,(this->pixel_to_miles*(val)+250), QString::number(val));
 }
 
 
@@ -407,11 +412,11 @@ void MapScope::rotate(double increment ){
     this->angle += increment;
     // after 360 degress it rotates around different values
     if (this->angle >= 360){
-        this->line_x = 240;
+        this->line_x = MAP_VIEW_W / 2;
         this->line_y = -920;
         this->angle = 0;
     }
-    rotate_line_matrix(240,240, increment); /// rotate around 240,240
+    rotate_line_matrix(MAP_VIEW_W / 2, 240, increment);
     // qDebug() << this->angle;
 
     //rgbled_set_angle(this->angle, on_color, off_color);
@@ -440,13 +445,17 @@ void MapScope::rotate_line_matrix(double x, double y, double angle ){
 /// draw plane in given location x,y and color
 void MapScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircraft *entry, bool showInfo){
     if (entry->latValid && entry->lonValid){
+        qreal liveOpacity = paint->opacity();
+        if (entry->timestamp.secsTo(QDateTime::currentDateTimeUtc()) > STALE_DIM_SEC)
+            paint->setOpacity(liveOpacity * 0.35);
+
         if(RENDER_AIRPLANE_IMAGE == true && entry->planeTrackValid){
             QImage test = QImage(DEFAULT_AIRPLANE_IMAGE);
-            test = test.scaled(20, 20, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            test = test.scaled(40, 40, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             QTransform transform = QTransform();
             transform.rotate(entry->planeTrack);
             test = test.transformed(transform);
-            paint->drawImage(QPoint(coord.x()-8,coord.y()-8), test);
+            paint->drawImage(QPoint(coord.x()-20,coord.y()-20), test);
         }else{
 
             QColor color = DEFAULT_AIRPLANE;
@@ -478,16 +487,18 @@ void MapScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircraft
 
         //If the cursor is hoovering over this plane then render the details of it.
         if(showInfo){
-            QFont bold(activeTheme->standardFont, 10); // or Fantasy or AnyStyle or Helvetica
+            QFont bold(activeTheme->standardFont, 20); // or Fantasy or AnyStyle or Helvetica
             paint->setFont(bold);
             if(entry->callSignValid){
-                paint->drawText(coord.x()-40, coord.y()-30,QString(entry->callSign));
+                paint->drawText(coord.x()-40, coord.y()-48,QString(entry->callSign));
             } else {
-                paint->drawText(coord.x()-40, coord.y()-30, QString::number(entry->icao24, 16).rightJustified(6, '0').toUpper());
+                paint->drawText(coord.x()-40, coord.y()-48, QString::number(entry->icao24, 16).rightJustified(6, '0').toUpper());
             }
             QString distanceStr = QString::number(distance, 'f', 2) + "nm";
-            paint->drawText(coord.x()-40, coord.y()-20, distanceStr);
+            paint->drawText(coord.x()-40, coord.y()-22, distanceStr);
         }
+
+        paint->setOpacity(liveOpacity);
     }
 }
 
@@ -564,33 +575,13 @@ bool MapScope::setMapTile(double zoom, double lat, double lon){
     state_mutex.lock();
 
     double n = pow(2,zoom);
-    double lat_rad = lat*M_PI/180.0;;
-    double x = (lon + 180.0) / 360.0 * n;
-    double y = (1.0 - asinh(tan(lat_rad)) / M_PI) / 2.0 * n;
+    double lat_rad = lat*M_PI/180.0;
+    double tx = (lon + 180.0) / 360.0 * n;
+    double ty = (1.0 - asinh(tan(lat_rad)) / M_PI) / 2.0 * n;
 
     int zo = zoom;
-    double x_shift = 0;
-    double y_shift = 0;
-
-    double pixOfImage = 256; // 256 or 512
-//    double pixOfImage = 512; // 256 or 512
-
-    double correction;
-    if(pixOfImage == 256){
-        correction = 16;
-    }
-    if(pixOfImage == 512){
-        correction = 272;
-    }
-
-
-//   double stile = 40075016.686 * (cos(lat)/pow(2,zo));
-//   double spix = stile/256;
-
-    x_shift = modf(x,&x);
-    y_shift = modf(y,&y);
-    x_shift = pixOfImage - x_shift*pixOfImage - correction; /// TODO: fix the mapping accuacy
-    y_shift = (-1*y_shift*pixOfImage)- correction;
+    double fx = modf(tx, &tx);   // fractional position within the centre tile
+    double fy = modf(ty, &ty);
 
     if (sdMap == true){
         QDir mapsDir;
@@ -608,142 +599,6 @@ bool MapScope::setMapTile(double zoom, double lat, double lon){
     }else{
         delete mapLocation;
         mapLocation = new QString(LOCAL_MAP_FILES);
-    }
-
-    //  qDebug() << "yshift: " << y_shift <<" x_shift: "<< x_shift << "correction: " << correction;
-    //  String fileName = QStringLiteral("/home/defcon/Downloads/mbutil/test2/%1/%2/%3.png").arg().arg().arg();
-
-    //  qDebug() << QString(LOCATION_FILE)+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y);
-    // qDebug() << "path Locaiton" << QStandardPaths::standardLocations(QStandardPaths::AppDataLocation);
-
-    QString *fileTopLeft = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x-1).arg(y-1)); // x-1 y-1
-    QImage *rawTopLeft = new QImage(*fileTopLeft);
-    delete fileTopLeft;
-    if(rawTopLeft->isNull()){
-        delete rawTopLeft;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawTopLeft" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x-1).arg(y-1);
-        return false;
-    }
-
-    QString *fileTopCen = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y-1)); // y-1
-    QImage *rawTopCen = new QImage(*fileTopCen);
-    delete fileTopCen;
-    if(rawTopCen->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawTopCen" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y-1);
-        return false;
-    }
-
-    QString *fileTopRight = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x+1).arg(y-1)); // x+1 y-1
-    QImage *rawTopRight = new QImage(*fileTopRight);
-    delete fileTopRight;
-    if(rawTopRight->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawTopRight" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x+1).arg(y-1);
-        return false;
-    }
-
-    QString *fileCenLeft = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x-1).arg(y)); // x-1
-    QImage *rawCenLeft = new QImage(*fileCenLeft);
-    delete fileCenLeft;
-    if(rawCenLeft->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        delete rawCenLeft;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawCenLeft" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x-1).arg(y);
-        return false;
-
-    }
-
-    QString *fileCenCen = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y)); // Replace with your PBF file path
-    QImage *rawCenCen = new QImage(*fileCenCen);
-    delete fileCenCen;
-    if(rawCenCen->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        delete rawCenLeft;
-        delete rawCenCen;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawCenCen" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y);
-        return false;
-
-    }
-
-    QString *fileCenRight = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x+1).arg(y)); // x+1
-    QImage *rawCenRight = new QImage(*fileCenRight);
-    delete fileCenRight;
-    if(rawCenRight->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        delete rawCenLeft;
-        delete rawCenCen;
-        delete rawCenRight;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawCenRight" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x+1).arg(y);
-        return false;
-
-    }
-
-    QString *fileBotLeft = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x-1).arg(y+1)); // x-1 y+1
-    QImage *rawBotLeft = new QImage(*fileBotLeft);
-    delete fileBotLeft;
-    if(rawBotLeft->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        delete rawCenLeft;
-        delete rawCenCen;
-        delete rawCenRight;
-        delete rawBotLeft;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawBotLeft" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x-1).arg(y+1);
-        return false;
-    }
-
-    QString *fileBotCen = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y+1)); // y+1
-    QImage *rawBotCen = new QImage(*fileBotCen);
-    delete fileBotCen;
-    if(rawBotCen->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        delete rawCenLeft;
-        delete rawCenCen;
-        delete rawCenRight;
-        delete rawBotLeft;
-        delete rawBotCen;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawBotCen"<< QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x).arg(y+1);
-        return false;
-
-    }
-
-    QString *fileBotRight = new QString(*mapLocation+QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x+1).arg(y+1)); // x+1 y+1
-    QImage *rawBotRight = new QImage(*fileBotRight);
-    delete fileBotRight;
-    if(rawBotRight->isNull()){
-        delete rawTopCen;
-        delete rawTopLeft;
-        delete rawTopRight;
-        delete rawCenLeft;
-        delete rawCenCen;
-        delete rawCenRight;
-        delete rawBotLeft;
-        delete rawBotCen;
-        delete rawBotRight;
-        state_mutex.unlock();
-        // qDebug() << "setMapTiles error in rawBotRight" << QStringLiteral("/%1/%2/%3.png").arg(zo).arg(x+1).arg(y+1);
-        return false;
     }
 
     // Brighten each tile in-place, skipping transparent pixels so the black
@@ -764,98 +619,39 @@ bool MapScope::setMapTile(double zoom, double lat, double lon){
             }
         }
     };
-    brightenTile(rawTopLeft);
-    brightenTile(rawTopCen);
-    brightenTile(rawTopRight);
-    brightenTile(rawCenLeft);
-    brightenTile(rawCenCen);
-    brightenTile(rawCenRight);
-    brightenTile(rawBotLeft);
-    brightenTile(rawBotCen);
-    brightenTile(rawBotRight);
 
-    int wid = pixOfImage;
-    int hgt = wid;
-    // Display the image in a label
-    QRectF *topLeft = new QRectF((wid*-1)+x_shift,0+y_shift,wid,hgt);
-    QRectF *topCenter = new QRectF(0+x_shift,0+y_shift,wid,hgt);
-    QRectF *topRight = new QRectF(wid+x_shift,0+y_shift,wid,hgt);
-    QRectF *centerLeft = new QRectF((wid*-1)+x_shift,hgt+y_shift,wid,hgt);
-    QRectF *centerCenter = new QRectF(0+x_shift,hgt+y_shift,wid,hgt);
-    QRectF *centerRight = new QRectF(wid+x_shift,hgt+y_shift,wid,hgt);
-    QRectF *bottomLeft = new QRectF((wid*-1)+x_shift,hgt*2+y_shift,wid,hgt);
-    QRectF *bottomCenter = new QRectF(0+x_shift,hgt*2+y_shift,wid,hgt);
-    QRectF *bottomRight = new QRectF(wid+x_shift,hgt*2+y_shift,wid,hgt);
+    // Assemble a 5x3 mosaic of 256px tiles into the 600x480 view with the
+    // GPS position at the view centre. Tiles missing from the cache (edge of
+    // the downloaded region) are left black instead of failing the whole
+    // render; only a missing centre tile reports failure (NOMAP).
+    const int tilePx = 256;
+    const double originX = (MAP_VIEW_W / 2) - fx * tilePx;  // centre tile left
+    const double originY = (MAP_VIEW_H / 2) - fy * tilePx;  // centre tile top
 
     delete pixMap;
-    pixMap = new QPixmap(wid*4,hgt*4); /// in reality is 480,480
-    QPainter *p = new QPainter(pixMap);
-    p->fillRect(pixMap->rect(), Qt::black);
+    pixMap = new QPixmap(MAP_VIEW_W, MAP_VIEW_H);
+    QPainter p(pixMap);
+    p.fillRect(pixMap->rect(), Qt::black);
 
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*topLeft,*rawTopLeft);
-    p->end();
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*topCenter,*rawTopCen);
-    p->end();
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*topRight,*rawTopRight);
-    p->end();
-
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*centerLeft,*rawCenLeft);
-    p->end();
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*centerCenter,*rawCenCen);
-    p->end();
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*centerRight,*rawCenRight);
-    p->end();
-
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*bottomLeft,*rawBotLeft);
-    p->end();
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*bottomCenter,*rawBotCen);
-    p->end();
-    p->begin(pixMap);
-    p->setCompositionMode(QPainter::CompositionMode_SourceOver);
-    p->drawImage(*bottomRight,*rawBotRight);
-    p->end();
-
-
-    delete topLeft;
-    delete topCenter;
-    delete topRight;
-    delete centerLeft;
-    delete centerCenter;
-    delete centerRight;
-    delete bottomLeft;
-    delete bottomCenter;
-    delete bottomRight;
-
-    delete rawTopCen;
-    delete rawTopLeft;
-    delete rawTopRight;
-    delete rawCenLeft;
-    delete rawCenCen;
-    delete rawCenRight;
-    delete rawBotLeft;
-    delete rawBotCen;
-    delete rawBotRight;
-
-    delete p;
+    bool haveCentre = false;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -2; dx <= 2; dx++) {
+            QImage img(*mapLocation + QStringLiteral("/%1/%2/%3.png")
+                           .arg(zo).arg((int)tx + dx).arg((int)ty + dy));
+            if (img.isNull())
+                continue;
+            if (dx == 0 && dy == 0)
+                haveCentre = true;
+            brightenTile(&img);
+            p.drawImage(QRectF(originX + dx * tilePx, originY + dy * tilePx,
+                               tilePx, tilePx), img);
+        }
+    }
+    p.end();
 
     state_mutex.unlock();
 
-    return true;
+    return haveCentre;
 }
 void MapScope::processDebouncedZoom()
 {

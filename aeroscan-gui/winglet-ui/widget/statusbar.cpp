@@ -45,7 +45,7 @@ StatusBar::StatusBar(QWidget *parent) : QWidget{parent}
     moveCenter(locationIcon, width() - 50, height()/2 + 70);
 
     adsbIcon = new QLabel(this);
-    adsbIcon->setPixmap(adsb_off);
+    adsbIcon->setPixmap(adsb_nofeed);
     adsbIcon->setFixedSize(adsbIcon->sizeHint());
     moveCenter(adsbIcon, width() - 72, height()/2 + 115);
 
@@ -86,14 +86,18 @@ void StatusBar::reloadPixmaps() {
     activeTheme->loadColoredIcon(&location_okay,   ":/icons/location/okay.png",   QColor("#22cc44"));
     activeTheme->loadColoredIcon(&location_nolock, ":/icons/location/nolock.png", QColor("#dd2222"));
     activeTheme->loadColoredIcon(&location_off,    ":/icons/location/off.png",    QColor("#dd2222"));
-    activeTheme->loadMonochromeIcon(&adsb_off, ":/icons/adsb/off.png");
-    activeTheme->loadMonochromeIcon(&adsb_on, ":/icons/adsb/on.png");
+    // ADS-B is three-state: red = no data feed (dump1090 down or the tuner
+    // borrowed the dongle), amber = feed up but no aircraft currently heard,
+    // green = actively receiving aircraft.
+    activeTheme->loadColoredIcon(&adsb_nofeed, ":/icons/adsb/off.png", QColor("#dd2222"));
+    activeTheme->loadColoredIcon(&adsb_idle,   ":/icons/adsb/on.png",  QColor("#ffaa00"));
+    activeTheme->loadColoredIcon(&adsb_active, ":/icons/adsb/on.png",  QColor("#22cc44"));
     prevBattIcon = BATT_ICON_UNSET;
 }
 
 void StatusBar::timeRefreshCallback()
 {
-    auto now = QDateTime::currentDateTime();
+    auto now = WingletGUI::inst->gpsLocalTime();
     if (now.date().year() < 2002) {
         dateTimeLabel->setText("No\nTime");
     }
@@ -276,13 +280,29 @@ void StatusBar::updateLocationState(int state) {
 
 void StatusBar::updateAdsbState(bool on)
 {
-    adsbIcon->setPixmap(on ? adsb_on : adsb_off);
+    adsbConnected = on;
+    refreshAdsbIcon();
+}
+
+void StatusBar::updateAdsbCount(int count)
+{
+    adsbHasTraffic = (count > 0);
+    refreshAdsbIcon();
+}
+
+void StatusBar::refreshAdsbIcon()
+{
+    if (!adsbConnected)
+        adsbIcon->setPixmap(adsb_nofeed);
+    else
+        adsbIcon->setPixmap(adsbHasTraffic ? adsb_active : adsb_idle);
 }
 
 void StatusBar::forceRefreshIcons() {
     updateWifiIcon(WingletGUI::inst->wifiMon->wifiState(), WingletGUI::inst->wifiMon->wifiStrength());
     updateBatteryState(WingletGUI::inst->battMon->battState(), WingletGUI::inst->battMon->percentage());
     updateLocationState(WingletGUI::inst->gpsReceiver->state());
+    updateAdsbCount(WingletGUI::inst->adsbReceiver->airspace().size());
     updateAdsbState(WingletGUI::inst->adsbReceiver->connected());
 }
 
@@ -294,6 +314,7 @@ void StatusBar::showEvent(QShowEvent *ev)
     connect(WingletGUI::inst->battMon, SIGNAL(battStateChanged(int, int)), this, SLOT(updateBatteryState(int, int)));
     connect(WingletGUI::inst->gpsReceiver, SIGNAL(stateUpdated(int)), this, SLOT(updateLocationState(int)));
     connect(WingletGUI::inst->adsbReceiver, SIGNAL(connectionStateChanged(bool)), this, SLOT(updateAdsbState(bool)));
+    connect(WingletGUI::inst->adsbReceiver, SIGNAL(aircraftCountChanged(int)), this, SLOT(updateAdsbCount(int)));
     timeRefreshCallback();
     timeRefresh->start();
 }
@@ -305,6 +326,7 @@ void StatusBar::hideEvent(QHideEvent *ev)
     disconnect(WingletGUI::inst->battMon, SIGNAL(battStateChanged(int, int)), this, SLOT(updateBatteryState(int, int)));
     disconnect(WingletGUI::inst->gpsReceiver, SIGNAL(stateUpdated(int)), this, SLOT(updateLocationState(int)));
     disconnect(WingletGUI::inst->adsbReceiver, SIGNAL(connectionStateChanged(bool)), this, SLOT(updateAdsbState(bool)));
+    disconnect(WingletGUI::inst->adsbReceiver, SIGNAL(aircraftCountChanged(int)), this, SLOT(updateAdsbCount(int)));
     timeRefresh->stop();
 }
 

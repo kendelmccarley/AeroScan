@@ -2,6 +2,7 @@
 #include "wingletgui.h"
 #include <QKeyEvent>
 #include <QWheelEvent>
+#include <QImageReader>
 #include <QMovie>
 #include <QTimer>
 
@@ -14,8 +15,12 @@ namespace WingletUI {
 SimpleMediaPlayer::SimpleMediaPlayer(QWidget *parent)
     : QWidget{parent}
 {
+    // Full 600x480 main display (WingletGUI collapses the stack margins for
+    // screens with this property).
+    setProperty("fullBleedScreen", true);
     label = new QLabel(this);
-    label->setGeometry(0, 0, 480, 480);
+    label->setGeometry(0, 0, 600, 480);
+    label->setAlignment(Qt::AlignCenter);
 
     QTimer* tir = new QTimer(this);
     connect(tir, SIGNAL(timeout()), this, SLOT(shimmerIncrement()));
@@ -109,7 +114,13 @@ void SimpleMediaPlayer::startMovie()
         break;
     }
 
-    movie->setScaledSize(QSize(480, 480));
+    // Fit the 600x480 view preserving the media's aspect ratio; the label's
+    // AlignCenter letterboxes it on the black background.
+    QSize native = QImageReader(movie->fileName()).size();
+    if (native.isValid())
+        movie->setScaledSize(native.scaled(600, 480, Qt::KeepAspectRatio));
+    else
+        movie->setScaledSize(QSize(600, 480));
     label->setMovie(movie);
     movie->start();
 

@@ -5,6 +5,7 @@
 #include "abstractsocketworker.h"
 #include <QDateTime>
 #include <QMutex>
+#include <QSet>
 #include <cmath>
 
 namespace WingletUI {
@@ -45,6 +46,7 @@ public:
 
     bool connected() {return m_connected;}
     QMap<quint32, Aircraft> airspace();
+    int totalAircraftSeen();
 
 signals:
     void connectionStateChanged(bool connected);
@@ -66,6 +68,9 @@ private:
     bool m_connected = false;
     QMutex state_mutex;
     QMap<quint32, Aircraft> m_airspace;
+    // Every distinct ICAO24 heard since app start — never pruned, so the
+    // flight list can report a cumulative "seen since startup" total.
+    QSet<quint32> m_seenIcaos;
     GPSReading currentGPS;
 
     static const int MAX_AIRSPACE_SIZE = 20;

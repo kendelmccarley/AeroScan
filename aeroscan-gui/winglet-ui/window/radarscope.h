@@ -11,10 +11,16 @@
 #define minZoom 1
 
 // 10 Hz repaint; 18°/tick keeps the sweep at 180°/s (2 s per revolution)
-#define SWEEPINTERVAL 100
-#define DEGREES_PER_INTERVAL 18
+#define SWEEPINTERVAL 50
+// Aircraft that stopped updating (marginal reception) coast at their last
+// position until the 90 s prune; dim them after this many seconds so a live
+// track is visually distinct from stale data.
+#define STALE_DIM_SEC 30
+// 4.5 deg per 50 ms tick = one smooth 4 s revolution (80 steps); the old
+// 18 deg / 100 ms produced 20 visibly discrete line positions per sweep.
+#define DEGREES_PER_INTERVAL 4.5
 
-#define AIRCRAFT_SIZE 7  // Arrow icon half-size in pixels (center to tip/base)
+#define AIRCRAFT_SIZE 14  // Arrow icon half-size in pixels (center to tip/base)
 
 // #define LOCAL_MAP_FILES "/home/defcon2024/Downloads/hometiles"
 #define LOCAL_MAP_FILES "/opt/winglet-gui/maps/"

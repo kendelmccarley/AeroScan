@@ -10,36 +10,74 @@ firmware from its custom Allwinner T113S hardware to commodity Raspberry Pi
 hardware.
 
 <p align="center">
-  <img src="docs/main-menu.png" width="640" alt="AeroScan main menu — arc menu with Radar Scope focused, touch zones left, status rail right">
+  <img src="docs/main-menu.png" width="640" alt="AeroScan main menu — Parhelia touch column left, arc menu with Radar Scope focused, instrument rail right">
   <br>
-  <em>Main menu — on-device screenshot, 800×480 DSI display</em>
+  <em>Main menu — on-device screenshot, 800×480 DSI display: Parhelia touch column,
+  arc menu, and the live instrument rail (GPS/ADS-B, SDR stats, Pi vitals, GPS-timezone clock)</em>
 </p>
 
 <p align="center">
-  <img src="docs/map-scope.png" width="32%" alt="Map Scope — aviation chart with airspace rings and airports">
-  <img src="docs/settings-menu.png" width="32%" alt="Settings menu">
-  <img src="docs/extras-menu.png" width="32%" alt="Extras menu">
+  <img src="docs/radar-scope.png" width="49%" alt="Radar Scope — PPI sweep with range ring">
+  <img src="docs/map-scope.png" width="49%" alt="Map Scope — full-width aviation chart with airspace">
   <br>
-  <em>Map Scope (OpenAIP airspace overlay), Settings, and Extras — captured on-device (F12 screenshot hotkey)</em>
+  <img src="docs/radio-tuner.png" width="49%" alt="Radio Tuner — airband on 121.500 Guard with presets and squelch">
+  <img src="docs/settings-menu.png" width="49%" alt="Settings menu">
+  <br>
+  <em>Radar Scope, full-width Map Scope (OpenAIP airspace with live decoder stats on the rail),
+  Radio Tuner on 121.500 Guard, and Settings — captured on-device (F12 screenshot hotkey)</em>
 </p>
 
 ## Features
 
-The GUI is an 800×480 instrument-style interface driven entirely from four touch
-zones — **Up**, **Down**, **A** (select), **B** (back) — or an optional paired
-Bluetooth keyboard. From the main menu:
+The 800×480 screen is an instrument panel in three columns: a **100 px
+Parhelia-branded touch column** on the left (logo above, the four control
+zones — **UP**, **DOWN**, **SEL**, **BACK** — in the lower half), a **600 px
+main display**, and a **100 px instrument rail** on the right. Everything is
+driven from the four touch zones or an optional paired Bluetooth/USB
+keyboard. From the main menu:
 
-- **Radar Scope** — PPI radar-style sweep plotting live ADS-B aircraft around your
-  GPS position.
+- **Radar Scope** — PPI radar sweep (smooth 4-second revolution) plotting live
+  ADS-B aircraft around your GPS position with callsign and altitude labels.
+  Tracks that stop updating dim after 30 seconds and age out at 90.
 - **Map Scope** — the same traffic overlaid on aviation chart tiles (airspace,
-  airports, NAVAIDs).
-- **Flight List** — scrollable list of tracked aircraft.
+  airports, NAVAIDs), using the full 600 px width; chart areas missing from
+  the tile cache render black instead of failing the view.
+- **Flight List** — scrollable list of tracked aircraft with callsign,
+  altitude, speed, heading, and distance, plus a cumulative count of every
+  aircraft heard since startup.
 - **Radio Tuner** — multi-band RTL-SDR receiver (see below). Works with one
   dongle (handing off from ADS-B) or two (alongside ADS-B).
 - **Extras** — GPS List (satellite/fix detail), GPS Tracker (position plot),
-  Clock, OScope, and Media Player (legacy avBadge demo apps).
+  Clock, OScope, and Media Player (full-screen, aspect-preserving; legacy
+  avBadge demo media plus optional SD-card media).
 - **Credits**, **Settings**, and **Power** (poweroff / reboot / restart UI / exit
   to terminal).
+
+### Instrument rail
+
+The right column is a live instrument rail, refreshed every 2 seconds
+(top to bottom):
+
+- **GPS bar** — green: position fix; amber: no lock.
+- **ADS-B bar** — amber: connected to the dump1090 feed; green: aircraft
+  heard in the last 90 seconds. After a single-dongle tuner session the feed
+  reconnects automatically in ~8 seconds.
+- **SDR stats** — decoder health from dump1090's rolling one-minute window:
+  messages/min, resolved positions/min, mean signal and noise floor (dBFS),
+  and sample-drop percentage. The noise floor doubles as an antenna/RF-siting
+  meter: ≈ −42 dBFS is a quiet site, ≈ −30 dBFS means local interference is
+  drowning reception.
+- **Pi vitals** — CPU % and frequency, load average, RAM %, SoC temperature
+  (with a `!` flag if the firmware reports throttling/undervoltage), network
+  throughput, disk usage, uptime.
+- **Date and clock** — 24-hour with seconds, in the timezone derived from the
+  GPS position (US zone bands with DST, solar time elsewhere).
+
+Screens also carry compact status icons beside the main display: WiFi
+signal, battery, date/time, GPS pin (green fix / red no-fix), and a
+three-state ADS-B airplane — **red slashed**: no data feed (dump1090 down or
+the dongle borrowed by the tuner); **amber**: feed up, sky quiet; **green**:
+aircraft heard.
 
 ### Radio tuner
 
@@ -63,7 +101,8 @@ Fully operable from the four touch keys:
 ### Settings
 
 - **WiFi** — scan and join, manual SSID entry, and manage saved networks
-  (on-screen keyboard for passphrases).
+  (on-screen keyboard for passphrases); the connected network shows its live
+  IP address.
 - **Bluetooth** — pair a keyboard (navigation) or headphones (audio) and manage
   paired devices; pairing runs over BlueZ D-Bus with the passkey shown on screen.
 - **UI Options** — brightness, dark mode, ADS-B timeout, 12/24-hour clock,
@@ -222,12 +261,18 @@ buildroot/, output/       (gitignored) Buildroot tree and build output
 ## Status
 
 - **Pi 2**: display + touch, Qt GUI, ADS-B working; WiFi bring-up in progress.
+  Not exercised recently — consider it stale.
 - **Pi 4**: primary target. Dual-display support (Hosyond DSI default /
   Waveshare HDMI, one-line selector in config.txt, clone-panel kernel patch)
-  with per-panel touch and rotation handled at runtime, WiFi and SSH, in-app Bluetooth pairing (BlueZ
-  D-Bus, passkey shown on screen) for both keyboards and audio headphones, audio
-  output selection (headphone jack / HDMI / Bluetooth), and the multi-band radio
-  tuner with squelch, user presets, and live FAA NASR airport frequencies. Code
-  complete; on-device verification ongoing.
+  with per-panel touch and rotation handled at runtime, WiFi and SSH, in-app
+  Bluetooth pairing (BlueZ D-Bus, passkey shown on screen) for both keyboards
+  and audio headphones, audio output selection (headphone jack / HDMI /
+  Bluetooth), the multi-band radio tuner with squelch, user presets, and live
+  FAA NASR airport frequencies, and the three-column instrument layout with
+  live SDR/system telemetry. The ADS-B pipeline is verified end-to-end
+  (including with an injected synthetic aircraft feed); real-world reception
+  at the development site is currently limited by suspected local RF
+  interference and antenna siting — details, open issues, and untested
+  features are tracked in [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
 
 Further design notes live in `DEVELOPMENT_PLAN.md`.

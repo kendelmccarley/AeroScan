@@ -183,6 +183,7 @@ private:
     // Auto-reconnect bookkeeping for paired audio devices (worker thread only)
     QTimer *reconnectTimer = nullptr;
     QSet<QString> reconnectInFlight;               // Connect() calls pending
+    QSet<QString> removingDevices;                 // RemoveDevice() in flight — skip reconnect
     QMap<QString, qint64> lastReconnectAttemptMs;  // per-device throttle
 
     // Snapshot shared with the GUI thread

@@ -1,7 +1,24 @@
 #include "knownnetworksmodel.h"
 #include "wingletgui.h"
 
+#include <QNetworkInterface>
+
 namespace WingletUI {
+
+// Subtitle for the currently connected network: the live IPv4 address of the
+// WiFi link (more useful than a static "Connected"), falling back to
+// "Connected" while DHCP hasn't assigned an address yet.
+static QString wifiLinkSubtitle()
+{
+    QNetworkInterface iface = QNetworkInterface::interfaceFromName(QStringLiteral("wlan0"));
+    if (iface.isValid() && (iface.flags() & QNetworkInterface::IsUp)) {
+        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol)
+                return entry.ip().toString();
+        }
+    }
+    return QStringLiteral("Connected");
+}
 
 const QList<QPair<QString, int>> networkOptions = {
     {"Forget Network", KnownNetworksModel::FORGET_NETWORK}
@@ -78,7 +95,7 @@ QVariant KnownNetworksModel::data(const QModelIndex &index, int role) const
         }
         else if (role == Qt::EditRole) {
             if (networkId == currentNetworkId) {
-                return "Connected";
+                return wifiLinkSubtitle();
             }
             else {
                 return {};

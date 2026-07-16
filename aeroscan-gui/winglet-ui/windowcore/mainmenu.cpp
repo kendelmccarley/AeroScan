@@ -141,10 +141,6 @@ const WingletUI::AppMenuItem mainMenuList[] = {
     },
 };
 
-// Top-level index of the Radio Tuner entry above; hidden until a second
-// RTL-SDR dongle is present (see MainMenu::canardConnectionChanged).
-static const int RADIO_TUNER_MENU_INDEX = 4;
-
 const WingletUI::AppMenuItem mainMenu {
     .title = "Main Menu",
     .submenu = mainMenuList,
@@ -171,11 +167,9 @@ MainMenu::MainMenu(QWidget *parent)
     connect(menuWidget, SIGNAL(startingHideAnimation(unsigned int)), this, SLOT(menuBeginningHide(unsigned int)));
     connect(menuWidget, SIGNAL(startingShowAnimation(unsigned int)), this, SLOT(menuBeginningShow(unsigned int)));
 
-    // Hide Radio Tuner when the second RTL-SDR isn't plugged in
-    menuModel->setHiddenMainEntry(WingletGUI::inst->rtlFm->isAvailable()
-                                  ? -1 : RADIO_TUNER_MENU_INDEX);
-    connect(WingletGUI::inst->rtlFm, &WingletUI::RtlFmWorker::availabilityChanged,
-            this, &MainMenu::canardConnectionChanged);
+    // The Radio Tuner entry stays visible whether or not a dongle is present:
+    // with one dongle it hands off from dump1090, with two it runs alongside
+    // ADS-B. Availability is checked when the entry is selected.
 
     QMetaObject::connectSlotsByName(this);
 
@@ -273,15 +267,6 @@ void MainMenu::focusInEvent(QFocusEvent* ev)
     menuWidget->setFocus(ev->reason());
 }
 
-void MainMenu::canardConnectionChanged(bool connected) {
-    menuModel->setHiddenMainEntry(connected ? -1 : RADIO_TUNER_MENU_INDEX);
-    if (connected && isVisible() && !menuWidget->currentEntry().parent().isValid()) {
-        // With the dongle present nothing is hidden, so the visible row equals
-        // the array index of the Radio Tuner entry.
-        menuWidget->setCurrentIndex(RADIO_TUNER_MENU_INDEX);
-    }
-}
-
 void MainMenu::menuItemSelected(QModelIndex index)
 {
     // Unless overidden in switch case, if we leave here, we will be returning back from a normal menu
@@ -342,7 +327,13 @@ void MainMenu::menuItemSelected(QModelIndex index)
             WingletGUI::inst->addWidgetOnTop(new SettingsMenu(WingletGUI::inst));
             break;
         case APP_CANARD:
-            WingletGUI::inst->addWidgetOnTop(new CanardBoard(WingletGUI::inst));
+            if (!WingletGUI::inst->rtlFm->isAvailable()) {
+                WingletGUI::inst->showMessageBox(
+                    "No RTL-SDR dongle detected.\nPlug one in to use the radio tuner.",
+                    "Radio Tuner");
+            } else {
+                WingletGUI::inst->addWidgetOnTop(new CanardBoard(WingletGUI::inst));
+            }
             break;
         default:
             menuWidget->show();

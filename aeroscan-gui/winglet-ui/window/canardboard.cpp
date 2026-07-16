@@ -166,6 +166,11 @@ CanardBoard::CanardBoard(QWidget *parent)
     connect(statusTimer, &QTimer::timeout, this, [this]{ updateStatus(); });
     statusTimer->start();
 
+    // Begin the tuner session: with a single dongle this stops dump1090 and
+    // takes device 0; with two it uses device 1 and ADS-B stays live. Ended in
+    // the destructor via rtlFm->stop(), which restarts dump1090 if handed off.
+    WingletGUI::inst->rtlFm->startSession();
+
     WingletGUI::inst->rtlFm->setSquelch(currentBandSquelch());
     rebuildBandPresets();
     render();
@@ -520,12 +525,12 @@ void CanardBoard::renderFrequencyValue()
 void CanardBoard::updateStatus()
 {
     QString s;
-    if (!WingletGUI::inst->rtlFm->isAvailable())
+    if (!WingletGUI::inst->rtlFm->isAvailable()) {
         s = "✕ NO DONGLE";
-    else if (WingletGUI::inst->rtlFm->isPlaying())
-        s = "● LIVE      RTL #1";
-    else
-        s = "○ STARTING   RTL #1";
+    } else {
+        QString dongle = QString("RTL #%1").arg(WingletGUI::inst->rtlFm->deviceIndex());
+        s = (WingletGUI::inst->rtlFm->isPlaying() ? "● LIVE      " : "○ STARTING   ") + dongle;
+    }
     statusLabel->setText(s);
 }
 

@@ -275,13 +275,20 @@ as-built; 6f–6k are the remaining work.
 - `RtlFmWorker::restartAudio()` reopens the stream when the output route changes
   (called by `WingletGUI::writeAudioOutputConf` and on Bluetooth reconnect).
 
-#### 6b — Dongle architecture ✓ AS BUILT (supersedes the "dongle handoff" design)
-The original plan stopped dump1090 to borrow the ADS-B dongle. The implemented
-design instead requires **two RTL-SDR dongles**: device 0 = dump1090 (ADS-B,
-`--device-index 0`), device 1 = radio tuner (`rtl_fm -d 1`).
-`RtlFmWorker::pollAvailability()` counts dongles every 3 s; the main-menu Radio
-Tuner entry grays out below two, and the tuner window closes itself if the dongle
-is pulled mid-session. No dump1090 stop/start, no ADS-B coverage gap.
+#### 6b — Dongle architecture ✓ AS BUILT (two-dongle concurrent + single-dongle handoff)
+Two modes, chosen by dongle count (`RtlFmWorker::pollAvailability()` recounts
+every 3 s):
+- **Two+ dongles:** device 0 = dump1090 (ADS-B), device 1 = radio tuner
+  (`rtl_fm -d 1`). Both run at once — no ADS-B coverage gap.
+- **One dongle:** the tuner hands off. Opening it (`RtlFmWorker::startSession()`)
+  stops `dump1090.service` and takes device 0 (`rtl_fm -d 0`); leaving the tuner
+  (`stop()`) restarts dump1090. ADSBReceiver reconnects to dump1090's SBS port
+  on its own once it is back. Hot-plugging the second dongle mid-session
+  reconciles live (release device 0 back to ADS-B, move the tuner to device 1).
+
+The main-menu Radio Tuner entry is always visible; selecting it with **zero**
+dongles shows a "No RTL-SDR dongle detected" message instead of opening. The
+tuner window still closes itself if the last dongle is pulled mid-session.
 
 #### 6c — Audio pipeline ✓ AS BUILT (FM/AM; NFM added in 6f)
 Two `QProcess` objects piped via `setStandardOutputProcess()`:

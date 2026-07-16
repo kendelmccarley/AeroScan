@@ -1,6 +1,7 @@
 #ifndef WINGLETUI_TOUCHBUTTONOVERLAY_H
 #define WINGLETUI_TOUCHBUTTONOVERLAY_H
 
+#include <QPixmap>
 #include <QWidget>
 #include <QTimer>
 
@@ -47,6 +48,21 @@ private:
 
     // Left state
     int m_pressedZone = -1;
+    // Monitored stats for the right column (SDR: slots 2-3, Pi: slots 4-5)
+    void pollStats();
+    bool   m_sdrValid = false;
+    double m_sdrMsgPerMin = -1, m_sdrPosPerMin = -1;
+    double m_sdrSignal = 0, m_sdrNoise = 0, m_sdrDropPct = 0;
+    bool   m_sdrSignalValid = false, m_sdrNoiseValid = false;
+    int m_cpuPct = -1, m_ramPct = -1, m_tempC = -1;
+    double m_cpuGHz = -1;
+    QString m_load1, m_uptime;
+    int m_netKBps = -1, m_diskPct = -1;
+    bool m_throttled = false;
+    quint64 m_prevNetBytes = 0;
+    quint64 m_prevCpuBusy = 0, m_prevCpuTotal = 0;
+    int m_statTick = 0;
+    QPixmap m_logo;   // Parhelia wordmark, rotated for the upper left strip
     QTimer *m_pressTimer = nullptr;
 
     // Right state

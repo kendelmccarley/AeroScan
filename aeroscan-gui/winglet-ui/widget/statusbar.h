@@ -24,6 +24,7 @@ private slots:
     void updateBatteryState(int state, int percentage);
     void updateLocationState(int state);
     void updateAdsbState(bool on);
+    void updateAdsbCount(int count);
     void timeRefreshCallback();
     void colorPaletteChanged();
     void timeFormatChanged(bool fmt12hr);
@@ -58,8 +59,13 @@ private:
     QPixmap location_nolock;
     QPixmap location_okay;
 
-    QPixmap adsb_off;
-    QPixmap adsb_on;
+    // ADS-B: red = no feed, amber = feed but no aircraft, green = receiving
+    QPixmap adsb_nofeed;
+    QPixmap adsb_idle;
+    QPixmap adsb_active;
+    bool adsbConnected = false;
+    bool adsbHasTraffic = false;
+    void refreshAdsbIcon();
 
     QTimer *timeRefresh;
 };

@@ -10,13 +10,23 @@ PartOf=aeroscan-gui.service
 
 [Service]
 Type=simple
+# Live decoder statistics for the GUI's status column (SDR stats segments):
+# stats.json lands in /run/dump1090 every 2 s.
+RuntimeDirectory=dump1090
 ExecStartPre=/bin/sleep 5
+# Single-bit CRC error correction stays ENABLED (dump1090 default): with a
+# marginal antenna it recovers frames that would otherwise be dropped, and
+# position decodes need paired CPR frames — running with --no-fix left
+# aircraft visible (single-frame callsign/altitude) but positionless
+# (dash distance, nothing plotted on the scopes). Verified 2026-07-15:
+# 45 s with fix = 43 msgs / 2 positions; comparable window without = 0 msgs.
 ExecStart=/usr/bin/dump1090 \
     --net \
     --net-sbs-port 30003 \
     --net-ro-port 30002 \
-    --quiet \
-    --no-fix
+    --write-json /run/dump1090 \
+    --write-json-every 2 \
+    --quiet
 Restart=always
 RestartSec=5
 

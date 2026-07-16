@@ -33,14 +33,9 @@ public:
     int columnCount(const QModelIndex &parent = QModelIndex()) const override;
     Qt::ItemFlags flags(const QModelIndex &index) const override;
 
-    // Hides a single top-level entry (used to add/remove the Radio Tuner item
-    // when the second RTL-SDR dongle appears/disappears). Pass -1 to show all.
-    void setHiddenMainEntry(int index);
-
 private:
     const AppMenuItem* menuRoot;
     QHash<const AppMenuItem*, MenuMapLookup> *parentMap;  // Map for children items to parents
-    int m_hiddenMainEntry = -1;  // Top-level row to hide, or -1 for none
 };
 
 } // namespace WingletUI

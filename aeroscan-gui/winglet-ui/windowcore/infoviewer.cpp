@@ -18,7 +18,7 @@ InfoViewer::InfoViewer(QWidget *parent)
     QVBoxLayout *layout = new QVBoxLayout(this);
 
     QLabel *title = new QLabel(this);
-    title->setText("Badge Info");
+    title->setText("Device Info");
     title->setForegroundRole(QPalette::Text);
     title->setAlignment(Qt::AlignCenter);
     title->setFont(QFont(activeTheme->titleFont, 26));

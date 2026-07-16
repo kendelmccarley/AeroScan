@@ -104,8 +104,10 @@ void FlightBoard::getAirTraffic() {
     tableWidget->setColumnWidth(3,40);
     tableWidget->setColumnWidth(4,75);
 
+    // Cumulative distinct aircraft heard since app start, not the count
+    // currently held in the (pruned) airspace list.
     QString totals = QString("Total Aircraft: ");
-    int num_elements = airspace.size();
+    int num_elements = WingletGUI::inst->adsbReceiver->totalAircraftSeen();
     QString count = QString::number(num_elements);
     QString together = totals + count;
     totalsLabel->setText(together);

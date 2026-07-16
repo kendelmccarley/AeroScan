@@ -26,7 +26,6 @@ protected slots:
     void menuBeginningHide(unsigned int duration);
     void menuBeginningShow(unsigned int duration);
     void colorPaletteChanged();
-    void canardConnectionChanged(bool connected);
 
 private:
     ScrollableMenu *menuWidget;

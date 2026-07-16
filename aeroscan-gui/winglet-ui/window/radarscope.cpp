@@ -28,6 +28,9 @@ RadarScope::RadarScope(QWidget *parent)
     setGeometry(0, 0, 480, 480);
     label = new QLabel(this);
     label->setGeometry(0, 0, 480, 480);
+    // Frames are blitted directly in paintEvent (atomic — no intermediate
+    // label state between frames); the label is a retired paint surface.
+    label->setVisible(false);
     applyZoomPreset();
 
 
@@ -344,8 +347,12 @@ void RadarScope::paintEvent(QPaintEvent *pEvent)
         painter->drawText(235, 30,QString("I"));
     }
 
-    label->setPixmap(*pix);     //To Do - later - label is an odd variable name for that actual radar scope things to be painted to
     delete painter;
+
+    // Blit the finished frame in this paint cycle — exactly one sweep line
+    // position ever reaches the screen per frame.
+    QPainter self(this);
+    self.drawPixmap(0, 0, *pix);
     delete pix;
 }
 
@@ -424,12 +431,17 @@ void RadarScope::rotate_line_matrix(double x, double y, double angle ){
 /// draw plane in given location x,y and color
 void RadarScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircraft *entry, bool showInfo){
     if (entry->latValid && entry->lonValid){
+        qreal liveOpacity = paint->opacity();
+        if (entry->timestamp.secsTo(QDateTime::currentDateTimeUtc()) > STALE_DIM_SEC)
+            paint->setOpacity(liveOpacity * 0.35);
+
         if(RENDER_AIRPLANE_IMAGE == true && entry->planeTrackValid){
             QImage test = QImage(DEFAULT_AIRPLANE_IMAGE);
+            test = test.scaled(32, 32, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             QTransform transform = QTransform();
             transform.rotate(entry->planeTrack);
             test = test.transformed(transform);
-            paint->drawImage(QPoint(coord.x()-8,coord.y()-8), test);
+            paint->drawImage(QPoint(coord.x()-16,coord.y()-16), test);
         }else{
 
             QColor color = DEFAULT_AIRPLANE;
@@ -466,17 +478,19 @@ void RadarScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircra
 
         // Always show callsign (line 1) and altitude (line 2) next to icon
         {
-            QFont labelFont(activeTheme->standardFont, 8);
+            QFont labelFont(activeTheme->standardFont, 16);
             paint->setFont(labelFont);
             paint->setPen(QPen(Qt::white));
             QString ident = entry->callSignValid
                 ? entry->callSign.trimmed()
                 : QString::number(entry->icao24, 16).rightJustified(6, '0').toUpper();
             int lx = coord.x() + AIRCRAFT_SIZE + 3;
-            paint->drawText(lx, coord.y() + 4, ident);
+            paint->drawText(lx, coord.y() + 6, ident);
             if (entry->altValid)
-                paint->drawText(lx, coord.y() + 14, QString::number(entry->alt) + "ft");
+                paint->drawText(lx, coord.y() + 28, QString::number(entry->alt) + "ft");
         }
+
+        paint->setOpacity(liveOpacity);
     }
 }
 

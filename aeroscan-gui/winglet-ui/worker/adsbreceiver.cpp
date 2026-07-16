@@ -1,6 +1,7 @@
 #include "adsbreceiver.h"
 #include "wingletgui.h"
 #include <cmath>
+#include <QProcess>
 #include <QTimer>
 
 #define earthRadiusKm 6371.0
@@ -12,6 +13,14 @@ ADSBReceiver::ADSBReceiver(QThread *ownerThread):
 {
     currentGPS = GPSReading(WingletGUI::inst->settings.lastLatitude(),
                             WingletGUI::inst->settings.lastLongitude(), false);
+
+    // dump1090 is not boot-enabled: systemd starts it only alongside
+    // aeroscan-gui.service (Wants=). When the GUI is launched directly from a
+    // shell that dependency never fires and the SBS port never opens, so make
+    // sure the decoder is up ourselves — mirrors RtlFmWorker, which already
+    // stops/starts it around single-dongle tuner sessions.
+    QProcess::startDetached("systemctl", {"start", "dump1090.service"});
+
     start("localhost", 30003);
 
     pruneTimer = new QTimer(this);
@@ -33,6 +42,15 @@ void ADSBReceiver::handleConnectionEvent(bool connected)
 
     m_connected = connected;
     emit connectionStateChanged(connected);
+}
+
+int ADSBReceiver::totalAircraftSeen()
+{
+    state_mutex.lock();
+    int count = m_seenIcaos.size();
+    state_mutex.unlock();
+
+    return count;
 }
 
 QMap<quint32, Aircraft> ADSBReceiver::airspace()
@@ -61,8 +79,10 @@ void ADSBReceiver::handleLine(const QString &line) {
 
     auto entry = m_airspace.find(icao24);
     bool isNew = (entry == m_airspace.end());
-    if (isNew)
+    if (isNew) {
         entry = m_airspace.insert(icao24, {});
+        m_seenIcaos.insert(icao24);
+    }
     entry->icao24 = icao24;
 
     uint messageType = query[1].toUInt(&okay);
@@ -106,6 +126,13 @@ void ADSBReceiver::handleLine(const QString &line) {
             entry->latValid = true;
             entry->distance = distanceEarth(lat, lon);
             entry->bearing = get_bearing(lat, lon);
+            // Bring-up diagnostics: confirm in-app position updates flow.
+            if (qEnvironmentVariableIsSet("AEROSCAN_ADSB_DEBUG")) {
+                static int posCount = 0;
+                if ((posCount++ % 5) == 0)
+                    qInfo("adsb pos: icao=%06X lat=%.4f lon=%.4f dist=%.2f new=%d",
+                          icao24, lat, lon, entry->distance, isNew);
+            }
         }
     }
     if (messageType == 6) {

@@ -1,0 +1,21 @@
+AeroScan — July 2026 Snapshot
+NEW: Hosyond DSI display support (config.txt panel
+selector), Bluetooth idle-wedge firmware fix,
+100/600/100 layout with Parhelia touch column and
+instrument rail (GPS/ADSB, SDR stats, Pi vitals,
+GPS-timezone clock), wide Map Scope, smooth radar
+sweep, bigger aircraft icons, stale-track dimming,
+cumulative flight count, dump1090 auto-start with
+error correction, F12 screenshots.
+
+KNOWN ISSUES: ADS-B reception is poor at the dev
+site — suspected local broadband interference
+(noise floor swings -42 to -30 dBFS) and antenna
+limitations. Watch the SDR rail meters: NF near
+-42 = quiet, near -30 = jammed. Positions need
+paired frames; aircraft may list with dashed
+distance and no plot when reception is marginal.
+
+NOT YET SOLID: stale-track dimming, dual-dongle
+mode, tuner UI on the new layout, HDMI panel
+fallback, Pi 2 target.
