@@ -4,6 +4,8 @@
 #include "winglet-ui/windowcore/messagebox.h"
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QProcess>
 #include <QTimeZone>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -82,6 +84,9 @@ WingletGUI::WingletGUI(QWidget *parent)
     // devices asynchronously) — the pairedDevicesChanged hook below converges
     // the config once the paired headphones show up.
     connect(&settings, SIGNAL(audioOutputChanged(int)), this, SLOT(applyAudioOutput(int)));
+    connect(&settings, SIGNAL(rtlTcpEnabledChanged(bool)), this, SLOT(applyRtlTcp()));
+    connect(&settings, SIGNAL(rtlTcpDeviceChanged(int)),  this, SLOT(applyRtlTcp()));
+    connect(&settings, SIGNAL(rtlTcpPortChanged(int)),    this, SLOT(applyRtlTcp()));
     connect(btMon, SIGNAL(pairedDevicesChanged()), this, SLOT(btPairedDevicesChanged()));
     lastGoodAudioOutput = settings.audioOutput();
     writeAudioOutputConf(settings.audioOutput());
@@ -237,6 +242,52 @@ void WingletGUI::gpsUpdated(WingletUI::GPSReading reading)
 void WingletGUI::colorPaletteUpdated()
 {
     setPalette(WingletUI::activeTheme->palette);
+}
+
+void WingletGUI::applyRtlTcp()
+{
+    // Remote SDR server (rtl_tcp), controlled from Settings -> Radio Options.
+    // The service reads /etc/default/rtl-tcp; enable/disable is persisted by
+    // systemd so the choice survives reboots. Device 0 is dump1090's dongle:
+    // selecting it pauses ADS-B for as long as the server is enabled
+    // (mirrors the radio tuner's single-dongle handoff).
+    const bool enabled = settings.rtlTcpEnabled();
+    const int device = settings.rtlTcpDevice();
+    const int port = settings.rtlTcpPort();
+
+    QFile f(QStringLiteral("/etc/default/rtl-tcp"));
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.write(QStringLiteral("DEVICE=%1\nPORT=%2\n").arg(device).arg(port).toUtf8());
+        f.close();
+    }
+
+    QProcess proc;
+    if (!enabled) {
+        proc.start(QStringLiteral("systemctl"),
+                   {QStringLiteral("disable"), QStringLiteral("--now"),
+                    QStringLiteral("rtl-tcp.service")});
+        proc.waitForFinished(5000);
+        // Restore ADS-B in case the server had borrowed device 0 (harmless
+        // no-op when dump1090 is already running).
+        QProcess::startDetached(QStringLiteral("systemctl"),
+                                {QStringLiteral("start"), QStringLiteral("dump1090.service")});
+        return;
+    }
+
+    if (device == 0) {
+        // Blocking stop so the dongle is free before rtl_tcp opens it.
+        proc.start(QStringLiteral("systemctl"),
+                   {QStringLiteral("stop"), QStringLiteral("dump1090.service")});
+        proc.waitForFinished(5000);
+    } else {
+        QProcess::startDetached(QStringLiteral("systemctl"),
+                                {QStringLiteral("start"), QStringLiteral("dump1090.service")});
+    }
+    QProcess::startDetached(QStringLiteral("systemctl"),
+                            {QStringLiteral("enable"), QStringLiteral("rtl-tcp.service")});
+    // restart (not start) so device/port changes take effect while running
+    QProcess::startDetached(QStringLiteral("systemctl"),
+                            {QStringLiteral("restart"), QStringLiteral("rtl-tcp.service")});
 }
 
 void WingletGUI::applyAudioOutput(int output)

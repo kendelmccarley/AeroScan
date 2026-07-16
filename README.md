@@ -98,6 +98,43 @@ Fully operable from the four touch keys:
 - **Volume** works on every audio output — 3.5 mm jack, HDMI, and Bluetooth — via
   an ALSA softvol control.
 
+### Remote SDR server (rtl_tcp)
+
+The device can serve one of its RTL-SDR dongles over the network to desktop
+SDR applications — SDR++, GQRX, SDR#, or anything else that speaks the
+`rtl_tcp` protocol. The heavy waterfall/demodulation UI runs on your
+computer; AeroScan just streams raw samples.
+
+**Enabling it (on the device):** Settings → Radio Options →
+
+1. **Remote SDR Device** — `RTL #1` (default) serves the second dongle and
+   leaves ADS-B running on device 0; `RTL #0 (pauses ADS-B)` hands the
+   ADS-B dongle to the server, stopping dump1090 until the server is turned
+   off again (single-dongle systems use this).
+2. **Remote SDR Port** — 1234 (the rtl_tcp convention), 2832, or 7373.
+3. **Remote SDR Server** — toggle on. The setting persists across reboots
+   (the GUI enables the systemd unit); toggle off to stop and restore ADS-B.
+
+**Connecting (on your computer):**
+
+- **SDR++** — Source: `RTL-TCP`, host `<pi-address>`, port `1234`, Start.
+- **GQRX** — Device string: `rtl_tcp=<pi-address>:1234`.
+- **SDR#** — Source: RTL-SDR (TCP), address/port as above.
+
+Notes: raw 8-bit IQ at typical sample rates is 30–60 Mbit/s — fine on good
+WiFi or Ethernet, but reduce the client's sample rate if the waterfall
+stutters. While the server holds a dongle, the on-device radio tuner cannot
+open that dongle. And the SDR sees the same RF environment AeroScan does —
+including the display panel's interference (see ADS-B reception tips), which
+makes a remote waterfall an excellent diagnostic for antenna placement.
+
+**Implementation** (for future work): `rtl-tcp.service` (systemd unit in the
+rpi4 overlay, preset-disabled, `SuccessExitStatus=1` because rtl_tcp exits 1
+on SIGTERM) reads `DEVICE`/`PORT` from `/etc/default/rtl-tcp`, which
+`WingletGUI::applyRtlTcp()` (wingletgui.cpp) rewrites whenever the three
+`rtlTcp*` settings change; the same hook performs `systemctl enable/disable
+--now` for persistence and the device-0 dump1090 stop/restore handoff.
+
 ### Settings
 
 - **WiFi** — scan and join, manual SSID entry, and manage saved networks
@@ -108,7 +145,9 @@ Fully operable from the four touch keys:
 - **UI Options** — brightness, dark mode, ADS-B timeout, 12/24-hour clock,
   SD-card maps, scroll direction, cached GPS position, and cold-boot GPS.
 - **System Options** — root password, clear root password, and time zone.
-- **Radio Options** — download/refresh the FAA airport frequency database (NASR).
+- **Radio Options** — download/refresh the FAA airport frequency database
+  (NASR), and the Remote SDR server controls (see
+  [Remote SDR server](#remote-sdr-server-rtl_tcp)).
 - **Audio** — output routing: headphone jack, HDMI, or Bluetooth headphones.
 - **About Device** and **View Release Notes**.
 

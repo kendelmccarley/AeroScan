@@ -8,3 +8,6 @@ enable aeroscan-bt-init.service
 # dump1090 is started by aeroscan-gui.service (Wants=) and stopped with it
 # (PartOf=) — not at boot, where it would pin a core demodulating for nobody.
 disable dump1090.service
+# rtl_tcp remote SDR server is controlled from Settings -> Radio Options;
+# the GUI runs systemctl enable/disable so the choice survives reboots.
+disable rtl-tcp.service

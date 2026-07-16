@@ -1,0 +1,18 @@
+[Unit]
+Description=rtl_tcp remote SDR server (streams raw RTL-SDR samples over TCP)
+After=network.target
+
+[Service]
+Type=simple
+# Defaults; overridden by /etc/default/rtl-tcp, written from
+# Settings -> Radio Options -> Remote SDR in aeroscan-gui.
+Environment=DEVICE=1 PORT=1234
+EnvironmentFile=-/etc/default/rtl-tcp
+ExecStart=/usr/bin/rtl_tcp -a 0.0.0.0 -p ${PORT} -d ${DEVICE}
+# rtl_tcp exits 1 on SIGTERM; that is a normal stop, not a failure
+SuccessExitStatus=1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

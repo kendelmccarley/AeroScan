@@ -49,6 +49,13 @@ public:
     // 2 = Bluetooth headphones (via bluez-alsa, requires a paired audio device)
     DEFINE_SETTING(int, audioOutput, 0, setAudioOutput)
 
+    // Remote SDR server (rtl_tcp): streams a dongle's raw samples over TCP
+    // for desktop SDR apps (SDR++, GQRX, SDR#). Device 0 is ADS-B's dongle —
+    // selecting it pauses dump1090 while the server is enabled.
+    DEFINE_SETTING(bool, rtlTcpEnabled, false, setRtlTcpEnabled)
+    DEFINE_SETTING(int, rtlTcpDevice, 1, setRtlTcpDevice)
+    DEFINE_SETTING(int, rtlTcpPort, 1234, setRtlTcpPort)
+
     // Default position: Tucson, AZ — used if GPS has never produced a fix
     DEFINE_SETTING(double, lastLatitude, 32.231917, setLastLatitude)
     DEFINE_SETTING(double, lastLongitude, -110.951333, setLastLongitude)

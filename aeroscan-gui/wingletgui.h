@@ -68,6 +68,7 @@ private slots:
     void colorPaletteUpdated();
     void overlayZonePressed(int zone);
     void applyAudioOutput(int output);
+    void applyRtlTcp();
     void btPairedDevicesChanged();
 
 private:

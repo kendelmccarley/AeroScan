@@ -274,7 +274,10 @@ void TouchButtonOverlay::paintLeft(QPainter &p)
                     .scaled(qRound((w - 12) * 0.9), qRound((half - 24) * 0.9),
                             Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
+    // Draw dimmed — full-brightness branding overpowers the dark theme.
+    p.setOpacity(0.55);
     p.drawPixmap((w - m_logo.width()) / 2, (half - m_logo.height()) / 2, m_logo);
+    p.setOpacity(1.0);
 
     // Touch zones compressed into the bottom half.
     // sz=9 → icon bounding box 18×18px.  Label sits to the right of icon.

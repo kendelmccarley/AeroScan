@@ -476,18 +476,21 @@ void RadarScope::drawPlane(QPainter *paint, QPoint coord, float distance, Aircra
             paint->restore();
         }
 
-        // Always show callsign (line 1) and altitude (line 2) next to icon
+        // Always show callsign (line 1) and altitude (line 2), anchored at
+        // the icon's 5 o'clock (below-right) — same size and placement as
+        // Map Scope, keeping the arrow and its track unobscured.
         {
-            QFont labelFont(activeTheme->standardFont, 16);
+            QFont labelFont(activeTheme->standardFont, 11);
             paint->setFont(labelFont);
             paint->setPen(QPen(Qt::white));
             QString ident = entry->callSignValid
                 ? entry->callSign.trimmed()
                 : QString::number(entry->icao24, 16).rightJustified(6, '0').toUpper();
-            int lx = coord.x() + AIRCRAFT_SIZE + 3;
-            paint->drawText(lx, coord.y() + 6, ident);
+            int lx = coord.x() + AIRCRAFT_SIZE / 2;
+            int ly = coord.y() + AIRCRAFT_SIZE + 12;
+            paint->drawText(lx, ly, ident);
             if (entry->altValid)
-                paint->drawText(lx, coord.y() + 28, QString::number(entry->alt) + "ft");
+                paint->drawText(lx, ly + 15, QString::number(entry->alt) + "ft");
         }
 
         paint->setOpacity(liveOpacity);

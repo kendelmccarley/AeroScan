@@ -68,6 +68,16 @@ AppSettings::AppSettings(QObject *parent)
 
     SettingsEntryContainer* radioSettings = new SettingsEntryContainer(this, "Radio Options");
     radioSettings->addEntry(new SettingsActionEntry(this, "Update Radio Data", ACTION_UPDATE_NASR));
+    radioSettings->addEntry(new AppSettingsBoolPropEntry(this, "rtlTcpEnabled", "Remote SDR Server"));
+    radioSettings->addEntry(new AppSettingsEnumPropEntry(this, "rtlTcpDevice", "Remote SDR Device", {
+                                                             {0, "RTL #0 (pauses ADS-B)"},
+                                                             {1, "RTL #1"}
+                                                         }));
+    radioSettings->addEntry(new AppSettingsEnumPropEntry(this, "rtlTcpPort", "Remote SDR Port", {
+                                                             {1234, "1234 (default)"},
+                                                             {2832, "2832"},
+                                                             {7373, "7373"}
+                                                         }));
     m_settingsEntryRoot->addEntry(radioSettings);
 
     SettingsEntryContainer* audioSettings = new SettingsEntryContainer(this, "Audio");
