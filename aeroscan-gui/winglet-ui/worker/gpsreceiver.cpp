@@ -210,7 +210,10 @@ void GPSReceiver::updateGPSConstellation(const QStringList &nmeaFields){
     //Useful (possibly) to print the actual messages being processed when debugging
     //qDebug() << nmeaFields;
 
-    if (nmeaFields[0] == "$GNGGA") {
+    // Match by sentence type, not talker ID: multi-GNSS receivers emit
+    // $GNGGA but GPS-only units (u-blox 7) emit $GPGGA — the altitude was
+    // silently dropped on those.
+    if (nmeaFields[0].endsWith("GGA")) {
         bool okay;
         int satsTracked = nmeaFields[7].toInt(&okay);
         if (!okay){
@@ -227,7 +230,7 @@ void GPSReceiver::updateGPSConstellation(const QStringList &nmeaFields){
         }
     }
 
-    if (nmeaFields[0] == "$GNGSA") {
+    if (nmeaFields[0].endsWith("GSA")) {
         bool okay;
         int posStatus = nmeaFields[2].toInt(&okay);
         if (!okay){
