@@ -24,7 +24,16 @@ Environment=QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/touchscreen0:rotate=2
 ExecStartPre=/usr/sbin/aeroscan-display-init
 EnvironmentFile=-/run/aeroscan/display.env
 ExecStart=/usr/bin/aeroscan-gui
-Restart=no
+# Appliance mode: the GUI must outlive any crash, indefinitely. Power-menu
+# exits are deliberate and must NOT respawn: 41=poweroff, 42=reboot,
+# 43=exit-to-terminal (codes from winglet-ui/theme.h; actions performed by
+# aeroscan-power-action below). Exit 0 = Restart UI — respawns by design.
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=0
+SuccessExitStatus=41 42 43
+RestartPreventExitStatus=41 42 43
+ExecStopPost=/usr/sbin/aeroscan-power-action
 StandardOutput=journal
 StandardError=journal
 

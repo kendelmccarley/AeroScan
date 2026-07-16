@@ -68,9 +68,12 @@ private:
     bool m_connected = false;
     QMutex state_mutex;
     QMap<quint32, Aircraft> m_airspace;
-    // Every distinct ICAO24 heard since app start — never pruned, so the
-    // flight list can report a cumulative "seen since startup" total.
+    // Distinct ICAO24s heard since app start, for the flight list's
+    // cumulative total. The dedupe set is bounded for indefinite running:
+    // past 50k entries it folds into the baseline and restarts (returning
+    // aircraft may then recount — acceptable drift for a fun counter).
     QSet<quint32> m_seenIcaos;
+    quint64 m_seenBaseline = 0;
     GPSReading currentGPS;
 
     static const int MAX_AIRSPACE_SIZE = 20;

@@ -1,0 +1,10 @@
+#!/bin/sh
+# ExecStopPost for aeroscan-gui.service: interpret the GUI's power-menu
+# exit codes (winglet-ui/theme.h EXIT_CODE_*). Runs on every unit stop;
+# does nothing for crashes, signals, or plain systemctl stop.
+#   41 = Poweroff    42 = Reboot    43 = Exit to terminal (no action)
+case "$EXIT_STATUS" in
+    41) systemctl poweroff --no-block ;;
+    42) systemctl reboot --no-block ;;
+esac
+exit 0

@@ -536,6 +536,15 @@ void WingletGUI::saveScreenshot()
         qInfo("WingletGUI: screenshot saved to %s", qPrintable(path));
     else
         qWarning("WingletGUI: screenshot save failed for %s", qPrintable(path));
+
+    // Keep the newest 100 shots — otherwise F12 (and the debug auto-capture)
+    // grows /var/lib/aeroscan without bound. Timestamped names sort
+    // chronologically.
+    QStringList shots = dir.entryList({QStringLiteral("screen-*.png")},
+                                      QDir::Files, QDir::Name);
+    while (shots.size() > 100) {
+        dir.remove(shots.takeFirst());
+    }
 }
 
 void WingletGUI::overlayZonePressed(int zone)

@@ -47,7 +47,7 @@ void ADSBReceiver::handleConnectionEvent(bool connected)
 int ADSBReceiver::totalAircraftSeen()
 {
     state_mutex.lock();
-    int count = m_seenIcaos.size();
+    int count = int(m_seenBaseline) + m_seenIcaos.size();
     state_mutex.unlock();
 
     return count;
@@ -82,6 +82,10 @@ void ADSBReceiver::handleLine(const QString &line) {
     if (isNew) {
         entry = m_airspace.insert(icao24, {});
         m_seenIcaos.insert(icao24);
+        if (m_seenIcaos.size() > 50000) {
+            m_seenBaseline += m_seenIcaos.size();
+            m_seenIcaos.clear();
+        }
     }
     entry->icao24 = icao24;
 

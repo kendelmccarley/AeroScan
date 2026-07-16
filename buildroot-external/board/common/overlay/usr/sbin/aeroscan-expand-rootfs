@@ -27,9 +27,12 @@ PART_START=$(cat /sys/block/mmcblk0/mmcblk0p2/start)
 PART_SIZE=$(cat /sys/block/mmcblk0/mmcblk0p2/size)
 FREE=$((DISK_SECTORS - PART_START - PART_SIZE))
 
-# Nothing worth claiming (< 8 MiB) — stamp and be done.
+# Nothing worth claiming (< 8 MiB) — but grow the filesystem before
+# stamping: a prior partial run may have grown the partition while the
+# in-kernel size (and therefore resize2fs) lagged until the next reboot.
 if [ "$FREE" -lt 16384 ]; then
     echo "aeroscan-expand-rootfs: partition already fills the card"
+    resize2fs "$PART"
     mkdir -p "$(dirname "$STAMP")"
     touch "$STAMP"
     exit 0
@@ -42,7 +45,18 @@ echo "aeroscan-expand-rootfs: growing $PART by $((FREE / 2048)) MiB"
 echo ",+" | sfdisk --no-reread --force -N 2 "$DISK"
 
 # Tell the kernel the new partition size (BLKPG works while mounted).
-partx --update --nr 2 "$DISK"
+partx --update --nr 2 "$DISK" || true
+
+# Verify the kernel actually picked up the new size — if it didn't,
+# resize2fs would silently no-op against the old size. Leave the stamp
+# unwritten so the next boot (with a freshly read partition table)
+# finishes the job via the fast path above.
+NEW_PART_SIZE=$(cat /sys/block/mmcblk0/mmcblk0p2/size)
+if [ "$NEW_PART_SIZE" -le "$PART_SIZE" ]; then
+    echo "aeroscan-expand-rootfs: kernel has not picked up the new size;"
+    echo "aeroscan-expand-rootfs: filesystem will be grown on the next boot"
+    exit 0
+fi
 
 # Grow the ext4 filesystem online.
 resize2fs "$PART"
