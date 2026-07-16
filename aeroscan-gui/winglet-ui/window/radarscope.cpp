@@ -280,21 +280,88 @@ void RadarScope::paintEvent(QPaintEvent *pEvent)
     painter->setFont(bold);
 
     if (viewMap == false){
+        // ── Phosphor P-scope rendering ────────────────────────────────────
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        const QPointF ctr(240.0, 240.0);
+        const double R = 240.0;             // fixed sweep radius (px)
+        const QColor base = *activeTheme->radar_sweep_lines_color;
 
-        //Draw the sweeping line, the rings and the text labels
-        //QPen pen(SCOPE_LINES_COLOR);
-        QPen pen(*activeTheme->radar_sweep_lines_color);
-        pen.setWidth(2);
-        painter->setPen(pen);
-        QLine rotLine(240,240,this->line_x,this->line_y);
-        painter->drawLine(rotLine);
+        // Faint interior wash inside the outer ring — CRT tube glow
+        {
+            QRadialGradient tube(ctr, R);
+            QColor inner = base; inner.setAlphaF(0.10);
+            QColor outer = base; outer.setAlphaF(0.02);
+            tube.setColorAt(0.0, inner);
+            tube.setColorAt(1.0, outer);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(tube);
+            painter->drawEllipse(ctr, R, R);
+        }
 
-        drawCirle(painter, ring_range_miles);
+        // Range rings: faded rings at 1/3 and 2/3, bright ring at full range
+        {
+            QColor faint = base; faint.setAlphaF(0.30);
+            painter->setBrush(Qt::NoBrush);
+            painter->setPen(QPen(faint, 1));
+            drawCirle(painter, ring_range_miles / 3);
+            drawCirle(painter, (ring_range_miles * 2) / 3);
+            painter->setPen(QPen(base, 2));
+            drawCirle(painter, ring_range_miles);
+        }
+
+        // Cardinal ticks + N marker on the outer ring
+        {
+            QColor tick = base; tick.setAlphaF(0.75);
+            painter->setPen(QPen(tick, 2));
+            painter->drawLine(QPointF(240, 0),       QPointF(240, 12));       // N
+            painter->drawLine(QPointF(240, 480),     QPointF(240, 468));      // S
+            painter->drawLine(QPointF(0, 240),       QPointF(12, 240));       // W
+            painter->drawLine(QPointF(480, 240),     QPointF(468, 240));      // E
+            QFont tickFont(activeTheme->standardFont, 10);
+            painter->setFont(tickFont);
+            painter->drawText(QRect(228, 14, 24, 14), Qt::AlignHCenter, QStringLiteral("N"));
+        }
+
+        // Phosphor decay trail: ~40 deg of fading beam behind the sweep
+        {
+            const int    steps   = 36;
+            const double stepDeg = 1.2;
+            for (int i = steps; i >= 1; --i) {
+                const double a = (this->angle - i * stepDeg) * M_PI / 180.0;
+                QColor c = base;
+                c.setAlphaF(0.28 * (1.0 - double(i) / steps));
+                painter->setPen(QPen(c, 3));
+                painter->drawLine(ctr, QPointF(240.0 + R * sin(a),
+                                               240.0 - R * cos(a)));
+            }
+        }
+
+        // Leading sweep edge with soft glow (wide/dim under narrow/bright)
+        {
+            const double a = this->angle * M_PI / 180.0;
+            const QPointF tip(240.0 + R * sin(a), 240.0 - R * cos(a));
+            QColor glow = base;
+            glow.setAlphaF(0.12);
+            painter->setPen(QPen(glow, 9, Qt::SolidLine, Qt::RoundCap));
+            painter->drawLine(ctr, tip);
+            glow.setAlphaF(0.35);
+            painter->setPen(QPen(glow, 5, Qt::SolidLine, Qt::RoundCap));
+            painter->drawLine(ctr, tip);
+            painter->setPen(QPen(base, 2, Qt::SolidLine, Qt::RoundCap));
+            painter->drawLine(ctr, tip);
+        }
+
+        // Ownship marker at scope centre
+        {
+            painter->setPen(QPen(base, 2));
+            painter->drawLine(QPointF(234, 240), QPointF(246, 240));
+            painter->drawLine(QPointF(240, 234), QPointF(240, 246));
+        }
 
         // Range label
         QFont rangeFont(activeTheme->standardFont, 10);
         painter->setFont(rangeFont);
-        painter->setPen(QPen(*activeTheme->radar_sweep_lines_color));
+        painter->setPen(QPen(base));
         painter->drawText(QRect(340, 450, 130, 20), Qt::AlignRight,
                           QStringLiteral("%1nm").arg(ZOOM_RANGES_NM[zoomPresetIdx]));
     }
@@ -395,19 +462,13 @@ void RadarScope::drawCirle(QPainter *paint, int val){
 
 /// rotate the line to look like scanning a radar
 void RadarScope::rotate(double increment ){
+    // Advance the sweep angle; the sweep line itself is drawn each frame at
+    // a fixed 240 px radius from the angle (the old line_x/line_y endpoint
+    // started at (240,-920) — a 1160 px arm whose overshoot was hidden by
+    // the original round display but wanders visibly on a rectangular one).
     this->angle += increment;
-    // after 360 degress it rotates around different values
-    if (this->angle >= 360){
-        this->line_x = 240;
-        this->line_y = -920;
-        this->angle = 0;
-    }
-    rotate_line_matrix(240,240, increment); /// rotate around 240,240
-    // qDebug() << this->angle;
-
-    //rgbled_set_angle(this->angle, on_color, off_color);
-    // rgbled_show_radar_beam(this->angle);
-
+    if (this->angle >= 360)
+        this->angle -= 360;
 }
 
 
